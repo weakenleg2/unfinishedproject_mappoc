@@ -1,10 +1,10 @@
 import torch
-from utils.misc import soft_update, average_gradients, onehot_from_logits, gumbel_softmax
-from utils.DDPG import DDPGAgent
+from utils.RA_Agent import RA_Agent
 
 MSELoss = torch.nn.MSELoss()
 
-class MADDPG(object):
+
+class RA_MADDPG(object):
     """
     Wrapper class for DDPG-esque (i.e. also MADDPG) agents in multi-agent task
     """
@@ -26,7 +26,7 @@ class MADDPG(object):
             discrete_action (bool): Whether or not to use discrete action space
         """
         self.n_agents = n_agents
-        self.agents = [DDPGAgent(lr=lr, discrete_action=discrete_action,
+        self.agents = [RA_Agent(lr=lr, discrete_action=discrete_action,
                                  hidden_dim=hidden_dim,
                                  **params)
                        for params in agent_init_params]
@@ -51,11 +51,11 @@ class MADDPG(object):
 
     @property
     def policies(self):
-        return [a.policy for a in self.agents]
+        return [a.control_policy for a in self.agents]
 
     @property
     def target_policies(self):
-        return [a.target_policy for a in self.agents]
+        return [a.target_actions for a in self.agents]
 
     def scale_noise(self, scale):
         """
@@ -79,8 +79,14 @@ class MADDPG(object):
         Outputs:
             actions: List of actions for each agent
         """
-        return [a.step(obs, explore=explore).to('cpu') for a, obs in zip(self.agents,
-                                                               observations)]
+        options = []
+        actions = []
+        for a, obs in zip (self.agents, observations):
+          option, action = a.step(obs, explore=explore)
+          options.append(option)
+          actions.append(action)
+
+        return options, actions 
 
     def update(self, sample, agent_i, parallel=False, logger=None):
         """
@@ -99,12 +105,7 @@ class MADDPG(object):
         curr_agent = self.agents[agent_i]
 
         curr_agent.critic_optimizer.zero_grad()
-        if self.discrete_action:  # one-hot encode action
-            all_trgt_acs = [onehot_from_logits(pi(nobs)) for pi, nobs in
-                            zip(self.target_policies, next_obs)]
-        else:
-            all_trgt_acs = [pi(nobs) for pi, nobs in zip(self.target_policies,
-                                                         next_obs)]
+        all_trgt_acs = [pi(nobs) for pi, nobs in zip(self.target_policies, next_obs)]
         trgt_vf_in = torch.cat((*next_obs, *all_trgt_acs), dim=1)
         target_value = (rews[agent_i].view(-1, 1) + self.gamma *
                         curr_agent.target_critic(trgt_vf_in) *
@@ -115,32 +116,19 @@ class MADDPG(object):
         vf_loss = MSELoss(actual_value, target_value.detach())
         vf_loss.backward()
 
-        if parallel:
-            average_gradients(curr_agent.critic)
-
         torch.nn.utils.clip_grad_norm_(curr_agent.critic.parameters(), 0.5)
         curr_agent.critic_optimizer.step()
 
-        curr_agent.policy_optimizer.zero_grad()
+        curr_agent.control_optimizer.zero_grad()
+        curr_agent.options_optimizer.zero_grad()
 
-        if self.discrete_action:
-            # Forward pass as if onehot (hard=True) but backprop through a differentiable
-            # Gumbel-Softmax sample. The MADDPG paper uses the Gumbel-Softmax trick to backprop
-            # through discrete categorical samples, but I'm not sure if that is
-            # correct since it removes the assumption of a deterministic policy for
-            # DDPG. Regardless, discrete policies don't seem to learn properly without it.
-            curr_pol_out = curr_agent.policy(obs[agent_i])
-            curr_pol_vf_in = gumbel_softmax(curr_pol_out, hard=True)
-        else:
-            curr_pol_out = curr_agent.policy(obs[agent_i])
-            curr_pol_vf_in = curr_pol_out
+        curr_pol_out = curr_agent.actions(obs[agent_i])
+        curr_pol_vf_in = curr_pol_out
 
         all_pol_acs = []
         for i, pi, ob in zip(range(self.n_agents), self.policies, obs):
             if i == agent_i:
                 all_pol_acs.append(curr_pol_vf_in)
-            elif self.discrete_action:
-                all_pol_acs.append(onehot_from_logits(pi(ob)))
             else:
                 all_pol_acs.append(pi(ob))
         vf_in = torch.cat((*obs, *all_pol_acs), dim=1)
@@ -148,11 +136,13 @@ class MADDPG(object):
         pol_loss = -curr_agent.critic(vf_in).mean()
         pol_loss += (curr_pol_out**2).mean() * 1e-3
         pol_loss.backward()
-        if parallel:
-            average_gradients(curr_agent.policy)
-        torch.nn.utils.clip_grad_norm_(curr_agent.policy.parameters(), 0.5)
-        curr_agent.policy_optimizer.step()
+
+        torch.nn.utils.clip_grad_norm_(curr_agent.control_policy.parameters(), 0.5)
+        curr_agent.control_optimizer.step()
+        curr_agent.options_optimizer.step()
+
         if logger is not None:
+
             logger.add_scalars('agent%i/losses' % agent_i,
                                {'vf_loss': vf_loss,
                                 'pol_loss': pol_loss},
@@ -164,23 +154,27 @@ class MADDPG(object):
         performed for each agent)
         """
         for a in self.agents:
-            soft_update(a.target_critic, a.critic, self.tau)
-            soft_update(a.target_policy, a.policy, self.tau)
+          a.update_target(self.tau)
         self.niter += 1
 
     def move_to_device(self, training=True, device='cuda'):
       device = torch.device(device)
       for a in self.agents:
           if training:
-            a.policy.train()
+            a.control_policy.train()
+            a.options_policy.train()
             a.critic.train()
-            a.target_policy.train()
+            a.target_control_policy.train()
+            a.target_options_policy.train()
             a.target_critic.train()
 
-          a.policy = a.policy.to(device)
-          a.critic = a.critic.to(device)
-          a.target_policy = a.target_policy.to(device)
-          a.target_critic = a.target_critic.to(device)
+          a.control_policy.to(device)
+          a.options_policy.to(device)
+          a.critic.to(device)
+          a.target_control_policy.to(device)
+          a.target_options_policy.to(device)
+          a.target_critic.to(device)
+        
 
     def prep_rollouts(self, device='cpu'):
         for a in self.agents:

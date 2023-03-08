@@ -1,3 +1,4 @@
+import torch
 from torch import Tensor
 from torch.autograd import Variable
 from torch.optim import Adam
@@ -32,6 +33,7 @@ class DDPGAgent(object):
         self.target_critic = MLPNetwork(num_in_critic, 1,
                                         hidden_dim=hidden_dim,
                                         constrain_out=False)
+
         hard_update(self.target_policy, self.policy)
         hard_update(self.target_critic, self.critic)
         self.policy_optimizer = Adam(self.policy.parameters(), lr=lr)
@@ -82,10 +84,16 @@ class DDPGAgent(object):
                 'policy_optimizer': self.policy_optimizer.state_dict(),
                 'critic_optimizer': self.critic_optimizer.state_dict()}
 
-    def load_params(self, params):
+    def load_params(self, params, device):
         self.policy.load_state_dict(params['policy'])
         self.critic.load_state_dict(params['critic'])
         self.target_policy.load_state_dict(params['target_policy'])
         self.target_critic.load_state_dict(params['target_critic'])
+
+        self.policy.to(device)
+        self.critic.to(device)
+        self.target_policy.to(device)
+        self.target_critic.to(device)
+
         self.policy_optimizer.load_state_dict(params['policy_optimizer'])
         self.critic_optimizer.load_state_dict(params['critic_optimizer'])

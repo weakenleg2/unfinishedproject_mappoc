@@ -68,7 +68,7 @@ class ReplayBuffer(object):
         if self.curr_i == self.max_steps:
             self.curr_i = 0
 
-    def sample(self, N, to_gpu=False, norm_rews=True):
+    def sample(self, N, to_gpu=False, norm_rews=True, eps = 1e-8):
         inds = np.random.choice(np.arange(self.filled_i), size=N,
                                 replace=False)
         if to_gpu:
@@ -78,7 +78,7 @@ class ReplayBuffer(object):
         if norm_rews:
             ret_rews = [cast((self.rew_buffs[i][inds] -
                               self.rew_buffs[i][:self.filled_i].mean()) /
-                             self.rew_buffs[i][:self.filled_i].std())
+                             (self.rew_buffs[i][:self.filled_i].std() + eps))
                         for i in range(self.num_agents)]
         else:
             ret_rews = [cast(self.rew_buffs[i][inds]) for i in range(self.num_agents)]

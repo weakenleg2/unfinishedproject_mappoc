@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -5,7 +6,7 @@ class MLPNetwork(nn.Module):
     """
     MLP network (can be used as value or policy)
     """
-    def __init__(self, input_dim, out_dim, hidden_dim=64, nonlin=F.relu,
+    def __init__(self, input_dim, out_dim, hidden_dim=256, nonlin=F.relu,
                  constrain_out=False, norm_in=False, discrete_action=True):
         """
         Inputs:
@@ -22,13 +23,16 @@ class MLPNetwork(nn.Module):
             self.in_fn.bias.data.fill_(0)
         else:
             self.in_fn = lambda x: x
-        self.fc1 = nn.Linear(input_dim, hidden_dim)
-        self.fc2 = nn.Linear(hidden_dim, hidden_dim)
-        self.fc3 = nn.Linear(hidden_dim, out_dim)
+
+        self.fc_in = nn.Linear(input_dim, hidden_dim)
+        self.fc_hidden = nn.Linear(hidden_dim, hidden_dim)
+        self.fc_out = nn.Linear(hidden_dim, out_dim)
         self.nonlin = nonlin
+
         if constrain_out and not discrete_action:
             # initialize small to prevent saturation
             self.fc3.weight.data.uniform_(-3e-3, 3e-3)
+            self.fc4.weight.data.uniform_(-3e-3, 3e-3)
             self.out_fn = F.tanh
         else:  # logits for discrete action (will softmax later)
             self.out_fn = lambda x: x
@@ -40,7 +44,12 @@ class MLPNetwork(nn.Module):
         Outputs:
             out (PyTorch Matrix): Output of network (actions, values, etc)
         """
-        h1 = self.nonlin(self.fc1(self.in_fn(X)))
-        h2 = self.nonlin(self.fc2(h1))
-        out = self.out_fn(self.fc3(h2))
+        x = self.nonlin(self.fc_in(self.in_fn(X)))
+        x = self.nonlin(self.fc_hidden(x))
+        out = self.out_fn(self.fc_out(x))
         return out
+
+if __name__ == '__main__':
+  nn = MLPNetwork(1, 1, 128)
+  res = nn(torch.tensor([1.0]))
+  print(res)

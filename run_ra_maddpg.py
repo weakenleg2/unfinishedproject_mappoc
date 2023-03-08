@@ -6,7 +6,7 @@ import numpy as np
 import gym
 from pettingzoo.mpe import simple_reference_v2
 from matplotlib import pyplot as plt
-from algorithms.maddpg import MADDPG
+from algorithms.resource_aware_maddpg import RA_MADDPG
 # from tensorboardX import SummaryWriter
 from utils.buffer import ReplayBuffer
 
@@ -31,8 +31,9 @@ def preprocess_obs(obs):
 
 def get_actions(obs, env, agents, training=True):
   actions = {}
-  logits = agents.step(obs, training)[0].detach()
-  action_list = torch.argmax(logits, dim=1).tolist()
+  options, log= agents.step(obs, training)
+  print(actions)
+  action_list = torch.argmax(actions[0], dim=-1).tolist()
   for i, agent in enumerate(env.possible_agents):
     actions[agent] = action_list[i]
 
@@ -89,31 +90,31 @@ if __name__ == '__main__':
   if not os.path.exists('models'):
     os.makedirs('models')
 
-  # env = gym.make('ma_gym:TrafficJunctionComm-v0',
-    # max_steps=40, arrive_prob=0, step_cost=-0.01, collision_reward=-10, completion_reward=10)
   env = simple_reference_v2.parallel_env(
-      local_ratio=0.5, max_cycles=25, continuous_actions=False)
+      local_ratio=0.5, max_cycles=25, continuous_actions=True)
+  print(env.action_space('agent_0'))
+  quit()
 
   obs_dim = env.observation_space('agent_0').shape[0]
   replay_buffer = ReplayBuffer(int(1e6), num_agents=n_agents,
-                               obs_dims=[obs_dim for _ in range(4)],
+                               obs_dims=[obs_dim for _ in range(n_agents)],
                                ac_dims=[env.action_space('agent_0').n for _ in range(n_agents)])
 
-  critic_obs_space = n_agents * (obs_dim + env.action_space('agent_0').n)
+  critic_obs_space = n_agents * (obs_dim + env.action_space('agent_0').n + 2)
 
   config = []
   for _ in range(n_agents):
     config.append({
-        "num_in_pol": obs_dim,
-        "num_out_pol": env.action_space('agent_0').n,
-        "num_in_critic": critic_obs_space,
+        "in_dim": obs_dim,
+        "out_dim": env.action_space('agent_0').n,
+        "critic_in": critic_obs_space,
     })
 
   if args.load:
-    maddpg = MADDPG.init_from_save(args.load)
+    maddpg = RA_MADDPG.init_from_save(args.load)
   else:
-    maddpg = MADDPG(config, n_agents, hidden_dim=64,
-                    discrete_action=True, device='cuda', gamma=0.95, lr=1e-2, tau=1e-2)
+    maddpg = RA_MADDPG(config, n_agents, hidden_dim=64,
+                    discrete_action=False, device='cuda', gamma=0.95, lr=1e-2, tau=1e-2)
 
   maddpg.move_to_device(training=True, device='cuda')
 
