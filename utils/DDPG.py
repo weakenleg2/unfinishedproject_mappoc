@@ -63,7 +63,7 @@ class DDPGAgent(object):
         Outputs:
             action (PyTorch Variable): Actions for this agent
         """
-        action = self.policy(obs)
+        action = self.policy(obs).to('cpu')
         if self.discrete_action:
             if explore:
                 action = gumbel_softmax(action, hard=True)

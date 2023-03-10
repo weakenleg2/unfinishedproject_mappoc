@@ -1,7 +1,7 @@
 import time
 import argparse
 import gym
-from pettingzoo.mpe import simple_reference_v2
+from custom_envs import simple_spread_c_v2
 import numpy as np
 import torch
 from algorithms.maddpg import MADDPG
@@ -21,9 +21,9 @@ def preprocess_obs(obs):
 def get_actions(obs, env, agents, training=True):
   actions = {}
   logits = agents.step(obs, training)[0].detach()
-  action_list = torch.argmax(logits, dim=1).tolist()
   for i, agent in enumerate(env.possible_agents):
-    actions[agent] = action_list[i]
+    #actions[agent] = torch.tensor([-1, 1, 0])
+    actions[agent] = logits[i]
 
   return actions, logits
 
@@ -33,15 +33,15 @@ if __name__ == '__main__':
   parser.add_argument('filename', type=str)
   args = parser.parse_args()
 
-  n_agents = 2
+  n_agents = 3
 
   maddpg = MADDPG.init_from_save(args.filename)
   maddpg.move_to_device(device='cpu')
 
-  env = simple_reference_v2.parallel_env( 
+  env = simple_spread_c_v2.parallel_env( 
                                       local_ratio = 0.5, 
                                       max_cycles=120, 
-                                      continuous_actions=False,
+                                      continuous_actions=True,
                                       render_mode = 'human')
 
 
@@ -51,6 +51,7 @@ if __name__ == '__main__':
 
   while env.agents:
     actions, logits = get_actions(obs, env, maddpg, False)
+    print(actions)
     next_obs, rewards, dones, truncations, infos = env.step(actions)
     next_obs = preprocess_obs(next_obs)
     obs = next_obs
