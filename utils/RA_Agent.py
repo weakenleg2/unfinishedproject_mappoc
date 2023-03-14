@@ -8,7 +8,10 @@ from utils.neuralnets import MLPNetwork
 class RA_Agent(nn.Module):
   def __init__(self, in_dim, out_dim, critic_in,
               n_options=2, hidden_dim=128, 
-              discrete_action=False, lr=1e-2):
+              discrete_action=False, lr=1e-2, 
+              options_policy = None,
+              control_policy = None,
+              ):
 
     super(RA_Agent, self).__init__()
 
@@ -16,17 +19,11 @@ class RA_Agent(nn.Module):
     self.out_dim = out_dim
     self.critic_in = critic_in
 
-    self.options_policy = MLPNetwork(in_dim, n_options, hidden_dim)
-    self.control_policy = MLPNetwork(in_dim, out_dim, hidden_dim, discrete_action=discrete_action)
-    self.critic = MLPNetwork(critic_in, 1, hidden_dim)
+    assert(options_policy is not None)
+    assert(control_policy is not None)
 
-    self.options_optimizer = Adam(self.options_policy.parameters(), lr=lr)
-    self.control_optimizer = Adam(self.control_policy.parameters(), lr=lr)
-    self.critic_optimizer = Adam(self.critic.parameters(), lr=lr)
-
-    self.target_options_policy = copy.deepcopy(self.options_policy)
-    self.target_control_policy = copy.deepcopy(self.control_policy)
-    self.target_critic = copy.deepcopy(self.critic)
+    self.options_policy = options_policy
+    self.control_policy = control_policy
 
   def update_target(self, tau = 0.01):
     soft_update(self.target_options_policy, self.options_policy, tau)
@@ -45,10 +42,6 @@ class RA_Agent(nn.Module):
     return actions
 
   def _merge_actions(self, actions, options):
-    for i in range(len(actions)):
-      if torch.argmax(options[i]) == 0:
-        actions[i] = torch.zeros(actions[i].shape)
-
     return torch.cat((actions, options), dim=-1) 
 
   def actions(self, state):
@@ -78,15 +71,9 @@ class RA_Agent(nn.Module):
   def load_params(self, params, device):
       self.control_policy.load_state_dict(params['control_policy'])
       self.options_policy.load_state_dict(params['options_policy'])
-      self.critic.load_state_dict(params['critic'])
 
-      self.control_policy.to(device)
       self.options_policy.to(device)
-      self.critic.to(device)
-
-      self.control_optimizer.load_state_dict(params['control_optimizer'])
-      self.options_optimizer.load_state_dict(params['options_optimizer'])
-      self.critic_optimizer.load_state_dict(params['critic_optimizer'])
+      self.control_policy.to(device)
 
 if __name__ == '__main__':
   print("Testing RA_Agent")

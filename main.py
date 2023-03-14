@@ -3,7 +3,6 @@ import os
 import argparse
 import torch
 import numpy as np
-import gym
 from custom_envs import simple_spread_c_v2
 from matplotlib import pyplot as plt
 from algorithms.maddpg import MADDPG
@@ -14,7 +13,6 @@ USE_CUDA = torch.cuda.is_available()
 device = torch.device("cuda" if USE_CUDA else "cpu")
 update_counter = 0
 
-
 def dict_to_tensor(d, unsqueeze_axis=0):
   d = list(d.values())
   d = np.array(d)
@@ -24,8 +22,9 @@ def dict_to_tensor(d, unsqueeze_axis=0):
 
 def preprocess_obs(obs):
   obs = dict_to_tensor(obs)
-  # obs = obs - obs.mean()
-  # obs = obs / (obs.std() + 1e-8)
+  #obs = torch.log(obs + 1e-4)
+  #obs = obs - obs.mean()
+  #obs = obs / (obs.std() + 1e-8)
   return obs
 
 
@@ -34,9 +33,9 @@ def get_actions(obs, env, agents, training=True):
   logits = agents.step(obs, training)[0].detach()
   for i, agent in enumerate(env.possible_agents):
     actions[agent] = logits[i]
+    actions[agent][-1] = 1
 
   return actions, logits
-
 
 def run_episode(env, agents, replay_buffer, training=True):
     global update_counter
@@ -47,6 +46,7 @@ def run_episode(env, agents, replay_buffer, training=True):
 
     while env.agents:
       actions, logits = get_actions(obs.to(device), env, agents, training)
+      #print(actions)
       next_obs, rewards, dones, truncations, infos = env.step(actions)
 
       next_obs = preprocess_obs(next_obs)

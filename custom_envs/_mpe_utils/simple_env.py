@@ -116,8 +116,6 @@ class SimpleEnv(AECEnv):
             dtype=np.float32,
         )
 
-        self.steps = 0
-
         self.current_actions = [None] * self.num_agents
 
     def observation_space(self, agent):
@@ -154,6 +152,7 @@ class SimpleEnv(AECEnv):
         self.terminations = {name: False for name in self.agents}
         self.truncations = {name: False for name in self.agents}
         self.infos = {name: {} for name in self.agents}
+        self.infos['comms'] = 0
 
         self.agent_selection = self._agent_selector.reset()
         self.steps = 0
@@ -162,10 +161,13 @@ class SimpleEnv(AECEnv):
 
     def _execute_world_step(self):
         # set action for each agent
+        self.infos['comms'] = 0
         for i, agent in enumerate(self.world.agents):
             action = self.current_actions[i]
             self._set_action(action, agent,
                              self.action_spaces[agent.name])
+            if agent.action.c > 0:
+              self.infos['comms'] += 1
 
         self.world.step()
 
@@ -214,14 +216,8 @@ class SimpleEnv(AECEnv):
             agent.action.u *= sensitivity
             action = action[1:]
         if not agent.silent:
-            # communication action
-            if self.continuous_actions:
-                agent.action.c = action[-1]
-            else:
-                agent.action.c = np.zeros(self.world.dim_c)
-                agent.action.c[action[0]] = 1.0
-            action = action[1:]
-        # make sure we used all elements of action
+          assert(self.continuous_actions)
+          agent.action.c = action[-1]
 
     def step(self, action):
         if (
