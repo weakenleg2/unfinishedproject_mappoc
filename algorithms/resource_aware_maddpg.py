@@ -4,17 +4,16 @@ from torch.autograd import Variable
 import copy
 from utils.neuralnets import MLPNetwork
 from utils.noise import OUNoise
-from utils.misc import soft_update
+from utils.misc import soft_update, gumbel_softmax
 
 MSELoss = torch.nn.MSELoss()
-
 
 class RA_MADDPG(object):
     """
     Wrapper class for DDPG-esque (i.e. also MADDPG) agents in multi-agent task
     """
 
-    def __init__(self, in_dim, out_dim, ctrl_critic_in, opt_critic_in, n_agents=3, gamma=0.95, tau=0.01, lr=0.01, hidden_dim=64,
+    def __init__(self, in_dim, out_dim, ctrl_critic_in, opt_critic_in, n_agents=3, constrain_out=True, gamma=0.95, tau=0.01, lr=0.01, hidden_dim=64,
                  discrete_action=False, device='cpu'):
         """
         Inputs:
@@ -32,14 +31,14 @@ class RA_MADDPG(object):
         """
         self.n_agents = n_agents
         self.control_policy = MLPNetwork(in_dim, out_dim, hidden_dim=hidden_dim, 
-                                         discrete_action=discrete_action).to(device)
-        self.options_policy = MLPNetwork(in_dim, 1, hidden_dim=hidden_dim,
-                                         discrete_action=discrete_action).to(device)
+                                         discrete_action=discrete_action, constrain_out=constrain_out).to(device)
+        self.options_policy = MLPNetwork(in_dim, 2, hidden_dim=hidden_dim,
+                                         discrete_action=True).to(device)
 
         self.control_critic = MLPNetwork(ctrl_critic_in, 1, hidden_dim=hidden_dim,
-                                         discrete_action=discrete_action).to(device)
+                                         discrete_action=False).to(device)
         self.options_critic = MLPNetwork(opt_critic_in, 1, hidden_dim=hidden_dim,
-                                         discrete_action=discrete_action).to(device)
+                                         discrete_action=False).to(device)
 
         self.target_control_policy = copy.deepcopy(self.control_policy)
         self.target_options_policy = copy.deepcopy(self.options_policy)
@@ -55,20 +54,21 @@ class RA_MADDPG(object):
         self.tau = tau
         self.lr = lr
         self.discrete_action = discrete_action
-        self.exploration = OUNoise(out_dim + 1)
+        self.exploration = OUNoise(out_dim)
+
+        self.init_dict = {"lr": lr, 
+                          "in_dim": in_dim,
+                          "out_dim": out_dim,
+                          "ctrl_critic_in": ctrl_critic_in,
+                          "opt_critic_in": opt_critic_in,
+                          "n_agents": n_agents,
+                          "discrete_action": discrete_action,
+                          "gamma": gamma, "tau": tau,}
     
     def _get_actions(self, obs):
       control = self.control_policy(obs)
       comm = self.options_policy(obs)
       return torch.cat((control, comm), dim=-1)
-
-    @property
-    def policies(self):
-        return [self.options_policy for _ in self.n_agents]
-
-    @property
-    def target_policies(self):
-        return [a.target_actions for a in self.agents]
 
     def scale_noise(self, scale):
         """
@@ -80,25 +80,31 @@ class RA_MADDPG(object):
       self.exploration.reset()
 
     def step(self, observations, explore=False):
-        """
-        Take a step forward in environment with all agents
-        Inputs:
-            observations: List of observations for each agent
-            explore (boolean): Whether or not to add exploration noise
-        Outputs:
-            actions: List of actions for each agent
-        """
-        actions = []
-        for obs in observations:
-          action = self._get_actions(obs).to('cpu')
+      """
+      Take a step forward in environment with all agents
+      Inputs:
+          observations: List of observations for each agent
+          explore (boolean): Whether or not to add exploration noise
+      Outputs:
+          actions: List of actions for each agent
+      """
+      actions = []
+      observations = observations.squeeze()
+      for obs in observations:
+        action = self._get_actions(obs).to('cpu')
 
-          if explore:
-            action += Variable(Tensor(self.exploration.noise()),
-                                   requires_grad=False)
-            action = action.clamp(-1, 1)
-          actions.append(action)
+        if explore:
+          cont = action[:2]
+          cont = cont + Variable(Tensor(self.exploration.noise()),
+                                  requires_grad=False)
+          discrete = action[2:]
+          discrete = gumbel_softmax(discrete.unsqueeze(0), hard=True).squeeze()
+          action = torch.cat((cont, discrete), dim=0)
 
-        return actions
+        action = action.clamp(-1, 1)
+        actions.append(action.detach())
+
+      return actions
 
     def update(self, sample, agent_i, parallel=False, logger=None):
         """
@@ -155,8 +161,8 @@ class RA_MADDPG(object):
         self.control_policy_optimizer.zero_grad()
         self.options_policy_optimizer.zero_grad()
 
-        curr_opt = self.options_policy(obs[agent_i])
         curr_ctrl = self.control_policy(obs[agent_i])
+        curr_opt = self.options_policy(obs[agent_i])
 
         all_ctrl = []
         all_opt = []
@@ -165,8 +171,8 @@ class RA_MADDPG(object):
                 all_ctrl.append(curr_ctrl)
                 all_opt.append(curr_opt)
             else:
-                all_opt.append(self.options_policy(ob))
                 all_ctrl.append(self.control_policy(ob))
+                all_opt.append(self.options_policy(ob))
 
         vf_ctrl_in = torch.cat((*obs, *all_ctrl), dim=1)
         vf_opt_in = torch.cat((*obs, *all_opt), dim=1)
@@ -192,6 +198,14 @@ class RA_MADDPG(object):
                                 #'pol_loss': pol_loss},
                                #self.niter)
 
+    def to_device(self, device):
+      self.control_policy.to(device)
+      self.options_policy.to(device)
+      self.control_critic.to(device)
+      self.options_critic.to(device)
+      self.target_control_critic.to(device)
+      self.target_options_critic.to(device)     
+
     def update_all_targets(self):
         """
         Update all target networks (called after normal updates have been
@@ -206,11 +220,18 @@ class RA_MADDPG(object):
         """
         # self.prep_training(
         # device='cpu')  # move parameters to CPU before saving
-        #save_dict = {'init_dict': self.init_dict,
-                     #'agent_params': [a.get_params() for a in self.agents]}
-        #torch.save(save_dict, filename)
-        # self.prep_training(
-        # device='cuda')  # move parameters to GPU after saving
+        save_dict = {'init_dict': self.init_dict,
+                    "control_policy": self.control_policy.state_dict(),
+                    "options_policy": self.options_policy.state_dict(),
+                    "control_critic": self.control_critic.state_dict(),
+                    "options_critic": self.options_critic.state_dict(),
+
+                    "control_optimizer": self.control_policy_optimizer.state_dict(),
+                    "options_optimizer": self.options_policy_optimizer.state_dict(),
+                    "control_critic_optimizer": self.control_critic_optimizer.state_dict(),
+                    "options_critic_optimizer": self.options_critic_optimizer.state_dict(),
+                     }
+        torch.save(save_dict, filename)
 
     @classmethod
     def init_from_save(cls, filename, device='cuda'):
@@ -221,6 +242,16 @@ class RA_MADDPG(object):
         save_dict = torch.load(filename, map_location=device)
         instance = cls(**save_dict['init_dict'])
         instance.init_dict = save_dict['init_dict']
-        for a, params in zip(instance.agents, save_dict['agent_params']):
-            a.load_params(params, device)
+        instance.control_policy.load_state_dict = save_dict["control_policy"]
+        instance.options_policy.load_state_dict = save_dict["options_policy"]
+        instance.control_critic.load_state_dict = save_dict["control_critic"]
+        instance.options_critic.load_state_dict = save_dict["options_critic"]
+
+        instance.control_policy_optimizer.load_state_dict = save_dict["control_optimizer"]
+        instance.options_policy_optimizer.load_state_dict = save_dict["options_optimizer"]
+        instance.control_critic_optimizer.load_state_dict = save_dict["control_critic_optimizer"]
+        instance.options_critic_optimizer.load_state_dict = save_dict["options_critic_optimizer"]
+
+        instance.to_device(device)
+
         return instance

@@ -32,10 +32,10 @@ def preprocess_obs(obs):
 
 def get_actions(obs, env, agents, training=True):
   actions = {}
-  logits = agents.step(obs, training)[0].detach()
+  logits = agents.step(obs, training)
   for i, agent in enumerate(env.possible_agents):
     actions[agent] = logits[i]
-    actions[agent][-1] = -1
+    #actions[agent][-1] = -1
 
   return actions, logits
 
@@ -44,7 +44,7 @@ def run_episode(env, agents, replay_buffer, training=True):
     global update_counter
     obs = env.reset()
     obs = preprocess_obs(obs)
-    agents.reset_noise()
+    #agents.reset_noise()
 
     tot_reward = np.zeros(agents.n_agents)
     steps = 0
@@ -61,7 +61,7 @@ def run_episode(env, agents, replay_buffer, training=True):
       replay_buffer.push(obs, logits,
                          rewards, next_obs, dones)
 
-      if len(replay_buffer) > 1024 and training and update_counter > 20:
+      if len(replay_buffer) > 1024 and training and update_counter > 100:
         update_counter = 0
         for j in range(agents.n_agents):
           sample = replay_buffer.sample(1024, True)
@@ -93,8 +93,13 @@ def plot_rewards(reward_history, comm_history):
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()
   parser.add_argument('-l', '--load', type=str)
+  parser.add_argument('-n', '--n_agents', type=int)
   args = parser.parse_args()
+
   n_agents = 3
+
+  if args.n_agents:
+    n_agents = args.n_agents
 
   if not os.path.exists(model_path):
     os.makedirs(model_path)
@@ -102,7 +107,7 @@ if __name__ == '__main__':
   if not os.path.exists(figure_path):
     os.makedirs(figure_path)
 
-  env = simple_spread_c_v2.parallel_env(N=n_agents, communication_penalty=-0.1,
+  env = simple_spread_c_v2.parallel_env(N=n_agents, communication_penalty=-0.01,
                                         local_ratio=0.5, max_cycles=25, continuous_actions=True)
 
   obs_dim = env.observation_space('agent_0').shape[0]
@@ -111,18 +116,18 @@ if __name__ == '__main__':
                                obs_dims=[obs_dim for _ in range(n_agents)],
                                ac_dims=[action_dim for _ in range(n_agents)])
 
-  ctrl_critic_in = n_agents * (obs_dim + action_dim - 1)
-  opt_critic_in = n_agents * (obs_dim + 1)
+  ctrl_critic_in = n_agents * (obs_dim + action_dim - 2)
+  opt_critic_in = n_agents * (obs_dim + 2)
 
-  algo = RA_MADDPG(in_dim=obs_dim, out_dim=action_dim - 1, 
+  algo = RA_MADDPG(in_dim=obs_dim, out_dim=action_dim - 2, 
                    ctrl_critic_in=ctrl_critic_in, opt_critic_in=opt_critic_in,
-                   n_agents=3,
+                   n_agents=n_agents,
                    hidden_dim=128,
                    discrete_action=False,
                    device='cuda',
                    gamma=0.95, lr=1e-2, tau=1e-2)
 
-  e_max = 25000
+  e_max = 50000
   reward_history = []
   comm_history = []
   best = -1000000000
@@ -131,7 +136,7 @@ if __name__ == '__main__':
 
     comm_savings = 1 - (comms / (steps * n_agents))
     comm_history.append(comm_savings)
-    reward_history.append(sum(tot_reward / n_agents))
+    reward_history.append(sum(tot_reward)/n_agents)
 
     if i % 100 == 0:
       eval_tot_reward = 0

@@ -166,7 +166,7 @@ class SimpleEnv(AECEnv):
             action = self.current_actions[i]
             self._set_action(action, agent,
                              self.action_spaces[agent.name])
-            if agent.action.c > 0:
+            if agent.action.c[0] > agent.action.c[1]:
               self.infos['comms'] += 1
 
         self.world.step()
@@ -217,7 +217,8 @@ class SimpleEnv(AECEnv):
             action = action[1:]
         if not agent.silent:
           assert(self.continuous_actions)
-          agent.action.c = action[-1]
+          agent.action.c[0] = action[-2]
+          agent.action.c[1] = action[-1]
 
     def step(self, action):
         if (

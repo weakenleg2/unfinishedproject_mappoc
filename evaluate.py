@@ -4,7 +4,7 @@ import gym
 from custom_envs import simple_spread_c_v2
 import numpy as np
 import torch
-from algorithms.maddpg import MADDPG
+from algorithms.resource_aware_maddpg import RA_MADDPG
 
 def dict_to_tensor(d, unsqueeze_axis=0):
   d = list(d.values())
@@ -20,7 +20,7 @@ def preprocess_obs(obs):
 
 def get_actions(obs, env, agents, training=True):
   actions = {}
-  logits = agents.step(obs, training)[0].detach()
+  logits = agents.step(obs, training)
   for i, agent in enumerate(env.possible_agents):
     #actions[agent] = torch.tensor([-1, 1, 0])
     actions[agent] = logits[i]
@@ -31,23 +31,22 @@ if __name__ == '__main__':
 
   parser = argparse.ArgumentParser()
   parser.add_argument('filename', type=str)
+  parser.add_argument('-n', '--n_agents', type=int, default=3)
   args = parser.parse_args()
 
-  n_agents = 3
-
-  maddpg = MADDPG.init_from_save(args.filename)
-  maddpg.move_to_device(device='cpu')
+  maddpg = RA_MADDPG.init_from_save(args.filename, device='cpu')
 
   env = simple_spread_c_v2.parallel_env( 
+                                      N=args.n_agents,
                                       local_ratio = 0.5, 
-                                      max_cycles=120, 
+                                      max_cycles=25, 
                                       continuous_actions=True,
                                       render_mode = 'human')
 
 
   obs = env.reset()
   obs = preprocess_obs(obs)
-  tot_reward = np.zeros(n_agents)
+  tot_reward = np.zeros(args.n_agents)
 
   while env.agents:
     actions, logits = get_actions(obs, env, maddpg, False)

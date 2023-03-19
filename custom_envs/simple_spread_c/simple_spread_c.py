@@ -94,14 +94,18 @@ parallel_env = parallel_wrapper_fn(env)
 
 class Scenario(BaseScenario):
     def action_callback(self, agent, _): 
-      if agent.action.c > 0:
+      if agent.action.c[0] > agent.action.c[1]:
         self.last_message[agent.name] = agent.state.p_pos
+        agent.color = np.array([0, 1, 0])
+      else:
+        agent.color = np.array([0.35, 0.35, 0.85])
+
       return agent.action
 
     def make_world(self, N=3, communication_penalty = -0.01):
         world = World()
         # set any world properties first
-        world.dim_c = 1
+        world.dim_c = 2
         num_agents = N
         num_landmarks = N
         world.collaborative = True
@@ -113,7 +117,7 @@ class Scenario(BaseScenario):
             agent.name = f"agent_{i}"
             agent.collide = True
             agent.silent = False
-            agent.size = 0.15
+            agent.size = 0.1
             agent.action_callback = self.action_callback
             self.last_message[agent.name] = np.zeros(world.dim_p)
         # add landmarks
@@ -166,15 +170,18 @@ class Scenario(BaseScenario):
         delta_pos = agent1.state.p_pos - agent2.state.p_pos
         dist = np.sqrt(np.sum(np.square(delta_pos)))
         dist_min = agent1.size + agent2.size
-        return True if dist < dist_min else False
+        return dist < dist_min
 
     def reward(self, agent, world):
         # Agents are rewarded based on minimum agent distance to each landmark, penalized for collisions
         rew = 0
         if agent.collide:
             for a in world.agents:
-                rew -= 1.0 * (self.is_collision(a, agent) and a != agent)
-        if agent.action.c > 0:
+                if a.name == agent.name:
+                    continue
+                is_collision = (self.is_collision(a, agent))
+                rew -= 1.0 * is_collision
+        if agent.action.c[0] > agent.action.c[1]:
             rew += self.communication_penalty
         return rew
 
@@ -199,7 +206,7 @@ class Scenario(BaseScenario):
         for other in world.agents:
             if other is agent:
                 continue
-            comm.append(self.last_message[other.name] - agent.state.p_pos)
+            comm.append(self.last_message[other.name])
 
             #Skip semding other agent's position
             #other_pos.append(other.state.p_pos - agent.state.p_pos)

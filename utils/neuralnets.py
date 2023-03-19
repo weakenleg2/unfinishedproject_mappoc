@@ -35,6 +35,8 @@ class MLPNetwork(nn.Module):
             self.fc_hidden.weight.data.uniform_(-3e-3, 3e-3)
             self.fc_out.weight.data.uniform_(-3e-3, 3e-3)
             self.out_fn = torch.tanh
+        #elif discrete_action:
+            #self.out_fn = nn.Softmax(dim=-1)
         else:  # logits for discrete action (will softmax later)
             self.out_fn = lambda x: x
 
