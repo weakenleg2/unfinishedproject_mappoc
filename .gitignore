@@ -1,6 +1,8 @@
 #added
 ma-gym/
 models/
+runs/
+figures/
 *.pt
 
 # Byte-compiled / optimized / DLL files

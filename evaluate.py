@@ -18,7 +18,7 @@ def preprocess_obs(obs):
   # obs = obs / (obs.std() + 1e-8)
   return obs
 
-def get_actions(obs, env, agents, training=True):
+def get_actions(obs, env, agents, training=False):
   actions = {}
   logits = agents.step(obs, training)
   for i, agent in enumerate(env.possible_agents):
@@ -39,7 +39,7 @@ if __name__ == '__main__':
   env = simple_spread_c_v2.parallel_env( 
                                       N=args.n_agents,
                                       local_ratio = 0.5, 
-                                      max_cycles=25, 
+                                      max_cycles=40, 
                                       continuous_actions=True,
                                       render_mode = 'human')
 
@@ -49,7 +49,7 @@ if __name__ == '__main__':
   tot_reward = np.zeros(args.n_agents)
 
   while env.agents:
-    actions, logits = get_actions(obs, env, maddpg, False)
+    actions, logits = get_actions(obs, env, maddpg, True)
     print(actions)
     next_obs, rewards, dones, truncations, infos = env.step(actions)
     next_obs = preprocess_obs(next_obs)

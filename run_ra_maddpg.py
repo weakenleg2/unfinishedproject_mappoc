@@ -1,4 +1,3 @@
-import time
 import os
 import argparse
 import torch
@@ -6,12 +5,14 @@ import numpy as np
 from custom_envs import simple_spread_c_v2
 from matplotlib import pyplot as plt
 from algorithms.resource_aware_maddpg import RA_MADDPG
-# from tensorboardX import SummaryWriter
 from utils.buffer import ReplayBuffer
+
+from torch.utils.tensorboard import SummaryWriter
 
 USE_CUDA = torch.cuda.is_available()
 device = torch.device("cuda" if USE_CUDA else "cpu")
 update_counter = 0
+writer = SummaryWriter()
 model_path = 'models/'
 figure_path = 'figures/'
 
@@ -61,11 +62,11 @@ def run_episode(env, agents, replay_buffer, training=True):
       replay_buffer.push(obs, logits,
                          rewards, next_obs, dones)
 
-      if len(replay_buffer) > 1024 and training and update_counter > 100:
+      if len(replay_buffer) > 128 and training and update_counter > 100:
         update_counter = 0
         for j in range(agents.n_agents):
-          sample = replay_buffer.sample(1024, True)
-          agents.update(sample, j)
+          sample = replay_buffer.sample(128, True, norm_rews=False)
+          agents.update(sample, j, logger=writer)
         agents.update_all_targets()
 
       obs = next_obs
@@ -108,7 +109,7 @@ if __name__ == '__main__':
     os.makedirs(figure_path)
 
   env = simple_spread_c_v2.parallel_env(N=n_agents, communication_penalty=-0.01,
-                                        local_ratio=0.5, max_cycles=25, continuous_actions=True)
+                                        local_ratio=0.5, max_cycles=40, continuous_actions=True)
 
   obs_dim = env.observation_space('agent_0').shape[0]
   action_dim = env.action_space('agent_0').shape[0]
@@ -116,27 +117,25 @@ if __name__ == '__main__':
                                obs_dims=[obs_dim for _ in range(n_agents)],
                                ac_dims=[action_dim for _ in range(n_agents)])
 
-  ctrl_critic_in = n_agents * (obs_dim + action_dim - 2)
-  opt_critic_in = n_agents * (obs_dim + 2)
-
-  algo = RA_MADDPG(in_dim=obs_dim, out_dim=action_dim - 2, 
-                   ctrl_critic_in=ctrl_critic_in, opt_critic_in=opt_critic_in,
+  if args.load:
+    algo = RA_MADDPG.init_from_save(args.load, device='cuda')
+  else:
+    algo = RA_MADDPG(in_dim=obs_dim, out_dim=action_dim, 
                    n_agents=n_agents,
-                   hidden_dim=128,
+                   hidden_dim=256,
                    discrete_action=False,
                    device='cuda',
-                   gamma=0.95, lr=1e-2, tau=1e-2)
+                   gamma=0.9, lr=1e-4, tau=5e-2)
 
   e_max = 50000
-  reward_history = []
-  comm_history = []
   best = -1000000000
   for i in range(e_max):
     tot_reward, comms, steps = run_episode(env, algo, replay_buffer, training=True)
 
     comm_savings = 1 - (comms / (steps * n_agents))
-    comm_history.append(comm_savings)
-    reward_history.append(sum(tot_reward)/n_agents)
+    avg_reward = sum(tot_reward)/n_agents
+    writer.add_scalar('agent/reward', avg_reward, i)
+    writer.add_scalar('agent/comm_savings', comm_savings, i)
 
     if i % 100 == 0:
       eval_tot_reward = 0
@@ -163,12 +162,12 @@ if __name__ == '__main__':
       print('Avg reward: ' + str(eval_tot_reward))
       print('Number of communications: ' + str(eval_tot_comms) + '/' + str(eval_steps * n_agents))
 
-      plot_rewards(reward_history, comm_history)
     if eval_tot_reward >= best:
       algo.save(model_path +'best.pt')
-
       best = eval_tot_reward
+
     if i % 1000 == 0:
       algo.save(model_path + str(i) + '.pt')
 
+  writer.close()
   env.close()
