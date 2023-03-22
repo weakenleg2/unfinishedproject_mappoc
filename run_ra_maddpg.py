@@ -10,6 +10,7 @@ from utils.buffer import ReplayBuffer
 from torch.utils.tensorboard import SummaryWriter
 
 USE_CUDA = torch.cuda.is_available()
+
 device = torch.device("cuda" if USE_CUDA else "cpu")
 update_counter = 0
 writer = SummaryWriter()
@@ -33,7 +34,7 @@ def preprocess_obs(obs):
 
 def get_actions(obs, env, agents, training=True):
   actions = {}
-  logits = agents.step(obs, training)
+  logits = agents.step(obs, False)
   for i, agent in enumerate(env.possible_agents):
     actions[agent] = logits[i]
     #actions[agent][-1] = -1
@@ -108,7 +109,7 @@ if __name__ == '__main__':
   if not os.path.exists(figure_path):
     os.makedirs(figure_path)
 
-  env = simple_spread_c_v2.parallel_env(N=n_agents, communication_penalty=-0.01,
+  env = simple_spread_c_v2.parallel_env(N=n_agents, communication_penalty=-0.1,
                                         local_ratio=0.5, max_cycles=40, continuous_actions=True)
 
   obs_dim = env.observation_space('agent_0').shape[0]
@@ -118,14 +119,14 @@ if __name__ == '__main__':
                                ac_dims=[action_dim for _ in range(n_agents)])
 
   if args.load:
-    algo = RA_MADDPG.init_from_save(args.load, device='cuda')
+    algo = RA_MADDPG.init_from_save(args.load, device=device)
   else:
     algo = RA_MADDPG(in_dim=obs_dim, out_dim=action_dim, 
                    n_agents=n_agents,
                    hidden_dim=256,
                    discrete_action=False,
-                   device='cuda',
-                   gamma=0.9, lr=1e-4, tau=5e-2)
+                   device=device,
+                   gamma=0.95, lr=1e-2, tau=5e-2)
 
   e_max = 50000
   best = -1000000000

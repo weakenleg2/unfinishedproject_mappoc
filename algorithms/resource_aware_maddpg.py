@@ -4,7 +4,7 @@ from torch.autograd import Variable
 import copy
 from utils.neuralnets import MLPNetwork
 from utils.noise import OUNoise
-from utils.misc import soft_update, gumbel_softmax
+from utils.misc import soft_update, gumbel_softmax, onehot_from_logits
 
 MSELoss = torch.nn.MSELoss()
 
@@ -31,8 +31,8 @@ class RA_MADDPG(object):
         """
         self.n_agents = n_agents
         self.control_actions = out_dim - 2
-        policy_out = (self.control_actions) * 2
-        critic_in = n_agents * (in_dim + policy_out)
+        policy_out = (self.control_actions)
+        critic_in = n_agents * (in_dim + out_dim)
         self.control_policy = MLPNetwork(in_dim, policy_out, hidden_dim=hidden_dim, 
                                          discrete_action=discrete_action, constrain_out=False).to(device)
         self.options_policy = MLPNetwork(in_dim, 2, hidden_dim=hidden_dim,
@@ -65,10 +65,12 @@ class RA_MADDPG(object):
                           "gamma": gamma, "tau": tau,}
     
     def _get_actions(self, obs):
-      control_params = self.control_policy(obs)
-      control = (torch.randn(self.control_actions, device=self.device, requires_grad=True) * control_params[..., -2:]) + control_params[..., :-2]
+      control = self.control_policy(obs)
+      #control = control_params[:2]
+      #control = (torch.randn(self.control_actions, device=self.device, requires_grad=True) * control_params[..., -2:]) + control_params[..., :-2]
       #control = torch.normal(control_params[..., :-2], torch.abs(control_params[..., -2:]))
       comm = self.options_policy(obs)
+      comm = onehot_from_logits(comm)
       return torch.cat((control, comm), dim=-1)
 
     def _get_target_actions(self, obs):
@@ -76,6 +78,7 @@ class RA_MADDPG(object):
       control = (torch.randn(self.control_actions, device=self.device, requires_grad=True) * control_params[..., -2:]) + control_params[..., :-2]
       #control = torch.normal(control_params[..., :-2], torch.abs(control_params[..., -2:]))
       comm = self.target_options_policy(obs)
+      comm = onehot_from_logits(comm)
       return torch.cat((control, comm), dim=-1)
 
     def scale_noise(self, scale):
@@ -109,7 +112,7 @@ class RA_MADDPG(object):
           cont = cont + noise
           discrete = gumbel_softmax(discrete.unsqueeze(0), hard=True).squeeze()
         else:
-          discrete = torch.softmax(discrete, dim=-1)
+          discrete = onehot_from_logits(discrete)
 
         action = torch.cat((cont, discrete), dim=0)
         action = action.clamp(-1, 1)

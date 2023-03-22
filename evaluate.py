@@ -49,8 +49,8 @@ if __name__ == '__main__':
   tot_reward = np.zeros(args.n_agents)
 
   while env.agents:
-    actions, logits = get_actions(obs, env, maddpg, True)
-    print(actions)
+    actions, logits = get_actions(obs, env, maddpg, False)
+    #print(actions)
     next_obs, rewards, dones, truncations, infos = env.step(actions)
     next_obs = preprocess_obs(next_obs)
     obs = next_obs
