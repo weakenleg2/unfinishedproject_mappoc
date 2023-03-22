@@ -13,7 +13,7 @@ class RA_MADDPG(object):
     Wrapper class for DDPG-esque (i.e. also MADDPG) agents in multi-agent task
     """
 
-    def __init__(self, in_dim, out_dim, n_agents=3, constrain_out=True, gamma=0.95, tau=0.01, lr=0.01, hidden_dim=64,
+    def __init__(self, in_dim, out_dim, n_agents=3, eps=1.0, eps_decay=0.01, gamma=0.95, tau=0.01, lr=0.01, hidden_dim=64,
                  discrete_action=False, device='cpu'):
         """
         Inputs:
@@ -55,11 +55,14 @@ class RA_MADDPG(object):
         self.discrete_action = discrete_action
         self.exploration = OUNoise(self.control_actions, scale=1)
         self.device = device
+        self.curr_eps = eps 
+        self.eps_decay = eps_decay
         self.n_iter = 0
 
         self.init_dict = {"lr": lr, 
                           "in_dim": in_dim,
                           "out_dim": out_dim,
+                          "eps_decay": eps_decay,
                           "n_agents": n_agents,
                           "discrete_action": discrete_action,
                           "gamma": gamma, "tau": tau,}
@@ -107,9 +110,9 @@ class RA_MADDPG(object):
         discrete = action[2:]
 
         if explore:
-          noise = Variable(Tensor(self.exploration.noise()),
-                                  requires_grad=False)
-          cont = cont + noise
+          if torch.rand(1) <= self.curr_eps:
+            cont = (torch.rand(cont.shape) * 2) - 1
+
           discrete = gumbel_softmax(discrete.unsqueeze(0), hard=True).squeeze()
         else:
           discrete = onehot_from_logits(discrete)
@@ -201,6 +204,7 @@ class RA_MADDPG(object):
         soft_update(self.target_critic, self.critic, self.tau)
         #soft_update(self.target_control_policy, self.control_policy, self.tau)
         #soft_update(self.target_options_policy, self.options_policy, self.tau)
+        self.curr_eps *= self.eps_decay
         self.n_iter += 1
 
     def save(self, filename):
@@ -214,6 +218,7 @@ class RA_MADDPG(object):
                     "options_policy": self.options_policy.state_dict(),
                     "critic": self.critic.state_dict(),
                     "n_iter": self.n_iter,
+                    "curr_eps": self.curr_eps,
 
                     "control_optimizer": self.control_policy_optimizer.state_dict(),
                     "options_optimizer": self.options_policy_optimizer.state_dict(),
@@ -240,6 +245,7 @@ class RA_MADDPG(object):
         instance.device = device
 
         instance.n_iter = save_dict["n_iter"]
+        instance.curr_eps = save_dict["curr_eps"]
         instance.to_device(device)
 
         return instance
