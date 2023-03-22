@@ -33,20 +33,33 @@ class RA_MADDPG(object):
         self.control_actions = out_dim - 2
         policy_out = (self.control_actions)
         critic_in = n_agents * (in_dim + out_dim)
-        self.control_policy = MLPNetwork(in_dim, policy_out, hidden_dim=hidden_dim, 
+
+        self.control_policies = []
+        self.options_policies = []
+        self.control_optimizers = []
+        self.options_optimizers = []
+
+        for _ in range(n_agents):
+          control_policy = MLPNetwork(in_dim, policy_out, hidden_dim=hidden_dim, 
                                          discrete_action=discrete_action, constrain_out=False).to(device)
-        self.options_policy = MLPNetwork(in_dim, 2, hidden_dim=hidden_dim,
+          options_policy = MLPNetwork(in_dim, 2, hidden_dim=hidden_dim,
                                          discrete_action=True).to(device)
+
+          control_policy_optimizer = torch.optim.Adam(control_policy.parameters(), lr=lr)
+          options_policy_optimizer = torch.optim.Adam(options_policy.parameters(), lr=lr)
+
+          self.control_policies.append(control_policy)
+          self.options_policies.append(options_policy)
+          self.control_optimizers.append(control_policy_optimizer)
+          self.options_optimizers.append(options_policy_optimizer)
+
 
         self.critic = MLPNetwork(critic_in, 1, hidden_dim=hidden_dim,
                                          discrete_action=False, constrain_out=False).to(device)
-
         #self.target_control_policy = copy.deepcopy(self.control_policy)
         #self.target_options_policy = copy.deepcopy(self.options_policy)
         self.target_critic = copy.deepcopy(self.critic)
 
-        self.control_policy_optimizer = torch.optim.Adam(self.control_policy.parameters(), lr=lr)
-        self.options_policy_optimizer = torch.optim.Adam(self.options_policy.parameters(), lr=lr)
         self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=lr)
 
         self.gamma = gamma
@@ -67,12 +80,12 @@ class RA_MADDPG(object):
                           "discrete_action": discrete_action,
                           "gamma": gamma, "tau": tau,}
     
-    def _get_actions(self, obs):
-      control = self.control_policy(obs)
+    def _get_actions(self, obs, agent):
+      control = self.control_policies[agent](obs)
       #control = control_params[:2]
       #control = (torch.randn(self.control_actions, device=self.device, requires_grad=True) * control_params[..., -2:]) + control_params[..., :-2]
       #control = torch.normal(control_params[..., :-2], torch.abs(control_params[..., -2:]))
-      comm = self.options_policy(obs)
+      comm = self.options_policies[agent](obs)
       comm = onehot_from_logits(comm)
       return torch.cat((control, comm), dim=-1)
 
@@ -104,8 +117,8 @@ class RA_MADDPG(object):
       """
       actions = []
       observations = observations.squeeze()
-      for obs in observations:
-        action = self._get_actions(obs).to('cpu')
+      for i, obs in enumerate(observations):
+        action = self._get_actions(obs, i).to('cpu')
         cont = action[:2]
         discrete = action[2:]
 
@@ -140,7 +153,7 @@ class RA_MADDPG(object):
 
         # Critic loss
 
-        all_trgt_acs = [self._get_actions(nobs) for nobs in next_obs]
+        all_trgt_acs = [self._get_actions(nobs, agent_id) for nobs, agent_id in zip(next_obs, range(self.n_agents))]
         trgt_vf_in = torch.cat((*next_obs, *all_trgt_acs), dim=1)
         target_value = (rews[agent_i].view(-1, 1) + self.gamma *
                         self.target_critic(trgt_vf_in) *
@@ -156,17 +169,17 @@ class RA_MADDPG(object):
         torch.nn.utils.clip_grad_norm_(self.critic.parameters(), 0.5)
         self.critic_optimizer.step()
 
-        self.control_policy_optimizer.zero_grad()
-        self.options_policy_optimizer.zero_grad()
+        self.control_optimizers[agent_i].zero_grad()
+        self.options_optimizers[agent_i].zero_grad()
 
-        curr_acs= self._get_actions(obs[agent_i])
+        curr_acs= self._get_actions(obs[agent_i], agent_i)
 
         all_acs = []
         for i, ob in zip(range(self.n_agents), obs):
             if i == agent_i:
                 all_acs.append(curr_acs)
             else:
-                all_acs.append(self._get_actions(ob).detach())
+                all_acs.append(self._get_actions(ob, i).detach())
 
         vf_in = torch.cat((*obs, *all_acs), dim=1)
 
@@ -174,11 +187,11 @@ class RA_MADDPG(object):
         pol_loss += (curr_acs**2).mean() * 1e-3
         pol_loss.backward()
 
-        torch.nn.utils.clip_grad_norm_(self.control_policy.parameters(), 0.5)
-        torch.nn.utils.clip_grad_norm_(self.options_policy.parameters(), 0.5)
+        torch.nn.utils.clip_grad_norm_(self.control_policies[agent_i].parameters(), 0.5)
+        torch.nn.utils.clip_grad_norm_(self.options_policies[agent_i].parameters(), 0.5)
         
-        self.control_policy_optimizer.step()
-        self.options_policy_optimizer.step()
+        self.control_optimizers[agent_i].step()
+        self.options_optimizers[agent_i].step()
 
         if logger is not None:
             logger.add_scalars('agent/losses',
@@ -188,9 +201,11 @@ class RA_MADDPG(object):
 
     def to_device(self, device):
       self.device = device
-      self.control_policy.to(device)
-      self.options_policy.to(device)
       self.critic.to(device)
+
+      for i in range(self.n_agents):
+        self.control_policies[i].to(device)
+        self.options_policies[i].to(device)
 
       #self.target_control_policy.to(device)
       #self.target_options_policy.to(device)
@@ -201,9 +216,10 @@ class RA_MADDPG(object):
         Update all target networks (called after normal updates have been
         performed for each agent)
         """
-        soft_update(self.target_critic, self.critic, self.tau)
         #soft_update(self.target_control_policy, self.control_policy, self.tau)
         #soft_update(self.target_options_policy, self.options_policy, self.tau)
+
+        soft_update(self.target_critic, self.critic, self.tau)
         self.curr_eps *= self.eps_decay
         self.n_iter += 1
 
@@ -214,16 +230,17 @@ class RA_MADDPG(object):
         # self.prep_training(
         # device='cpu')  # move parameters to CPU before saving
         save_dict = {'init_dict': self.init_dict,
-                    "control_policy": self.control_policy.state_dict(),
-                    "options_policy": self.options_policy.state_dict(),
                     "critic": self.critic.state_dict(),
                     "n_iter": self.n_iter,
                     "curr_eps": self.curr_eps,
 
-                    "control_optimizer": self.control_policy_optimizer.state_dict(),
-                    "options_optimizer": self.options_policy_optimizer.state_dict(),
                     "critic_optimizer": self.critic_optimizer.state_dict(),
                     }
+        for i in range(self.n_agents):
+            save_dict["control_policy_{}".format(i)] = self.control_policies[i].state_dict()
+            save_dict["options_policy_{}".format(i)] = self.options_policies[i].state_dict()
+            save_dict["control_optimizer_{}".format(i)] = self.control_optimizers[i].state_dict()
+            save_dict["options_optimizer_{}".format(i)] = self.options_optimizers[i].state_dict()
         torch.save(save_dict, filename)
 
     @classmethod
@@ -235,12 +252,15 @@ class RA_MADDPG(object):
         save_dict = torch.load(filename, map_location=device)
         instance = cls(**save_dict['init_dict'])
         instance.init_dict = save_dict['init_dict']
-        instance.control_policy.load_state_dict = save_dict["control_policy"]
-        instance.options_policy.load_state_dict = save_dict["options_policy"]
         instance.critic.load_state_dict = save_dict["critic"]
 
-        instance.control_policy_optimizer.load_state_dict = save_dict["control_optimizer"]
-        instance.options_policy_optimizer.load_state_dict = save_dict["options_optimizer"]
+        #load all the policies and optimizers
+        for i in range(instance.n_agents):
+          instance.control_policies[i].load_state_dict = save_dict["control_policy_{}".format(i)]
+          instance.options_policies[i].load_state_dict = save_dict["options_policy_{}".format(i)]
+          instance.control_optimizers[i].load_state_dict = save_dict["control_optimizer_{}".format(i)]
+          instance.options_optimizers[i].load_state_dict = save_dict["options_optimizer_{}".format(i)]
+
         instance.critic_optimizer.load_state_dict = save_dict["critic_optimizer"]
         instance.device = device
 

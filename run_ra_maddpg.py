@@ -114,7 +114,7 @@ def parse_args():
   parser.add_argument('--lr', type=float, default=1e-2)
   parser.add_argument('--tau', type=float, default=5e-2)
   parser.add_argument('-e', '--epsilon', type=float, default=1)
-  parser.add_argument('--epsilon_decay', type=float, default=0.995)
+  parser.add_argument('--epsilon_decay', type=float, default=0.98)
   parser.add_argument('--gamma', type=float, default=0.95)
   parser.add_argument('--hidden_dim', type=int, default=128)
 
