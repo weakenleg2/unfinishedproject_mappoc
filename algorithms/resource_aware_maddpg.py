@@ -13,7 +13,11 @@ class RA_MADDPG(object):
     Wrapper class for DDPG-esque (i.e. also MADDPG) agents in multi-agent task
     """
 
-    def __init__(self, in_dim, out_dim, n_agents=3, eps=1.0, eps_decay=0.01, gamma=0.95, tau=0.01, lr=0.01, hidden_dim=64,
+    def __init__(self, in_dim, out_dim, n_agents=3, 
+                 eps=1.0, eps_decay=0.01, gamma=0.95, 
+                 tau=0.01, lr=0.01, 
+                 actor_hidden_dim=128,
+                 critic_hidden_dim=128,
                  discrete_action=False, device='cpu'):
         """
         Inputs:
@@ -40,9 +44,9 @@ class RA_MADDPG(object):
         self.options_optimizers = []
 
         for _ in range(n_agents):
-          control_policy = MLPNetwork(in_dim, policy_out, hidden_dim=hidden_dim, 
+          control_policy = MLPNetwork(in_dim, policy_out, hidden_dim=actor_hidden_dim, 
                                          discrete_action=discrete_action, constrain_out=False).to(device)
-          options_policy = MLPNetwork(in_dim, 2, hidden_dim=hidden_dim,
+          options_policy = MLPNetwork(in_dim, 2, hidden_dim=actor_hidden_dim,
                                          discrete_action=True).to(device)
 
           control_policy_optimizer = torch.optim.Adam(control_policy.parameters(), lr=lr)
@@ -54,7 +58,7 @@ class RA_MADDPG(object):
           self.options_optimizers.append(options_policy_optimizer)
 
 
-        self.critic = MLPNetwork(critic_in, 1, hidden_dim=hidden_dim,
+        self.critic = MLPNetwork(critic_in, 1, hidden_dim=critic_hidden_dim,
                                          discrete_action=False, constrain_out=False).to(device)
         #self.target_control_policy = copy.deepcopy(self.control_policy)
         #self.target_options_policy = copy.deepcopy(self.options_policy)

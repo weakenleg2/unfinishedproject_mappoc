@@ -117,7 +117,8 @@ def parse_args():
   parser.add_argument('-e', '--epsilon', type=float, default=1)
   parser.add_argument('--epsilon_decay', type=float, default=0.98)
   parser.add_argument('--gamma', type=float, default=0.95)
-  parser.add_argument('--hidden_dim', type=int, default=128)
+  parser.add_argument('--actor_hidden_dim', type=int, default=128)
+  parser.add_argument('--critic_hidden_dim', type=int, default=256)
 
   parser.add_argument('--batch_size', type=int, default=128)
   parser.add_argument('--update_interval', type=int, default=100)
@@ -153,7 +154,8 @@ if __name__ == '__main__':
   else:
     algo = RA_MADDPG(in_dim=obs_dim, out_dim=action_dim,
                      n_agents=n_agents,
-                     hidden_dim=args.hidden_dim,
+                     actor_hidden_dim=args.actor_hidden_dim,
+                     critic_hidden_dim=args.actor_hidden_dim,
                      discrete_action=False,
                      eps=args.epsilon, 
                      eps_decay=args.epsilon_decay,
