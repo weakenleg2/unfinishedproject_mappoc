@@ -101,6 +101,7 @@ def parse_args():
   parser.add_argument('-n', '--n_agents', type=int, default=3)
   parser.add_argument('-b', '--buffer_size', type=int, default=1e6)
   parser.add_argument('-r', '--run_name', type=str, default="default")
+  parser.add_argument('-s', '--save', action='store_true')
 
   parser.add_argument('--model_path', type=str, default="models/")
   parser.add_argument('--figure_path', type=str, default="figures/")
@@ -108,7 +109,7 @@ def parse_args():
   parser.add_argument('--eval_episodes', type=int, default=10)
   parser.add_argument('--eval_interval', type=int, default=100)
   parser.add_argument('--save_interval', type=int, default=1000)
-  parser.add_argument('--full_comm', type=bool, default=False)
+  parser.add_argument('--full_comm', action='store_true')
 
   #Agent config
   parser.add_argument('--lr', type=float, default=1e-2)
@@ -127,9 +128,9 @@ def parse_args():
 if __name__ == '__main__':
   args = parse_args()
   n_agents = args.n_agents
-
   global writer
   writer = SummaryWriter('runs/' + args.run_name)
+
 
   if not os.path.exists(args.model_path):
     os.makedirs(args.model_path)
@@ -192,11 +193,11 @@ if __name__ == '__main__':
       print('Number of communications: ' + str(eval_tot_comms) +
             '/' + str(eval_steps * n_agents))
 
-    if eval_tot_reward >= best:
+    if args.save and eval_tot_reward >= best:
       algo.save(args.model_path + 'best.pt')
       best = eval_tot_reward
 
-    if i % args.save_interval == 0:
+    if args.save and i % args.save_interval == 0:
       algo.save(args.model_path + str(i) + '.pt')
 
   writer.close()
