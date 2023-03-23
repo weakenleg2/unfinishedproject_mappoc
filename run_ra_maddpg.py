@@ -194,6 +194,7 @@ if __name__ == '__main__':
       eval_reward, eval_comm = eval(env, algo, replay_buffer, args.eval_episodes, writer)
       writer.add_scalar('agent/eval_reward', eval_reward, eval_counter)
       writer.add_scalar('agent/eval_comm_savings', eval_comm, eval_counter)
+      eval_counter+=1
 
       if args.save and eval_reward >= best:
         algo.save(args.model_path + 'best.pt')
