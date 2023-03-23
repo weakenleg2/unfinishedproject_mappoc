@@ -125,6 +125,22 @@ def parse_args():
 
   return parser.parse_args()
 
+def eval(env, agents, buffer, eval_episodes, logger):
+  comm = 0
+  reward = 0 
+  tot_steps = 0
+  for _ in range(eval_episodes):
+    r, c, steps = run_episode(env, agents, buffer, args, training=False)
+    comm += c
+    reward = reward + np.mean(r, axis=0)
+    tot_steps += steps
+
+  comm = comm / (tot_steps * args.n_agents)
+  comm /= eval_episodes
+  comm = 1 - comm
+  reward /= eval_episodes
+
+  return reward, comm
 
 if __name__ == '__main__':
   args = parse_args()
@@ -163,6 +179,7 @@ if __name__ == '__main__':
                      gamma=args.gamma, lr=args.lr, tau=args.tau)
 
   best = -1000000000
+  eval_counter = 0
   for i in range(args.n_episodes):
     tot_reward, comms, steps = run_episode(
         env, algo, replay_buffer, args, training=True)
@@ -174,30 +191,13 @@ if __name__ == '__main__':
     writer.add_scalar('agent/comm_savings', comm_savings, i)
 
     if i % args.eval_interval == 0:
-      eval_tot_reward = 0
-      eval_tot_comms = 0
-      eval_steps = 0
+      eval_reward, eval_comm = eval(env, algo, replay_buffer, args.eval_episodes, writer)
+      writer.add_scalar('agent/eval_reward', eval_reward, eval_counter)
+      writer.add_scalar('agent/eval_comm_savings', eval_comm, eval_counter)
 
-      for _ in range(args.eval_episodes):
-        rewards, comms, steps = run_episode(
-            env, algo, replay_buffer, args, training=False)
-
-        eval_steps += steps
-        eval_tot_comms += comms
-        eval_tot_reward += sum(rewards) / n_agents
-
-      eval_tot_reward /= args.eval_episodes
-
-      # reward_history.append(eval_tot_reward)
-      print('------------------------------------')
-      print('Episode: ' + str(i) + '/' + str(args.n_episodes))
-      print('Avg reward: ' + str(eval_tot_reward))
-      print('Number of communications: ' + str(eval_tot_comms) +
-            '/' + str(eval_steps * n_agents))
-
-    if args.save and eval_tot_reward >= best:
-      algo.save(args.model_path + 'best.pt')
-      best = eval_tot_reward
+      if args.save and eval_reward >= best:
+        algo.save(args.model_path + 'best.pt')
+        best = eval_reward
 
     if args.save and i % args.save_interval == 0:
       algo.save(args.model_path + str(i) + '.pt')
