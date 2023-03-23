@@ -13,8 +13,6 @@ USE_CUDA = False
 
 device = torch.device("cuda" if USE_CUDA else "cpu")
 update_counter = 0
-writer = SummaryWriter()
-
 
 def dict_to_tensor(d, unsqueeze_axis=0):
   d = list(d.values())
@@ -44,7 +42,8 @@ def get_actions(obs, env, agents, full_comm=False, training=True):
 
 
 def run_episode(env, agents, replay_buffer, args, training=True):
-    global update_counter
+    global update_counter, writer
+
     obs = env.reset()
     obs = preprocess_obs(obs)
 
@@ -101,6 +100,7 @@ def parse_args():
   parser.add_argument('-l', '--load', type=str)
   parser.add_argument('-n', '--n_agents', type=int, default=3)
   parser.add_argument('-b', '--buffer_size', type=int, default=1e6)
+  parser.add_argument('-r', '--run_name', type=str, default="default")
 
   parser.add_argument('--model_path', type=str, default="models/")
   parser.add_argument('--figure_path', type=str, default="figures/")
@@ -127,6 +127,9 @@ def parse_args():
 if __name__ == '__main__':
   args = parse_args()
   n_agents = args.n_agents
+
+  global writer
+  writer = SummaryWriter('runs/' + args.run_name)
 
   if not os.path.exists(args.model_path):
     os.makedirs(args.model_path)
