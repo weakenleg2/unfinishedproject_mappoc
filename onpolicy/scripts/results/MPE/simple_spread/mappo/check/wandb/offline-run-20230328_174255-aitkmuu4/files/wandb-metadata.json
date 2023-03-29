@@ -1,0 +1,53 @@
+{
+    "os": "Windows-10-10.0.22000-SP0",
+    "python": "3.10.9",
+    "heartbeatAt": "2023-03-28T15:42:55.568614",
+    "startedAt": "2023-03-28T15:42:55.461274",
+    "docker": null,
+    "cuda": null,
+    "args": [
+        "--env_name",
+        "MPE"
+    ],
+    "state": "running",
+    "program": "C:\\Users\\Filip\\Documents\\Programming\\RAC\\onpolicy\\scripts\\train\\train_mpe.py",
+    "codePath": "onpolicy\\scripts\\train\\train_mpe.py",
+    "git": {
+        "remote": "https://github.com/FilPag/Learning-Event-Triggered-Control",
+        "commit": "cdf3b7415daf91416f82711418a13d298296fe26"
+    },
+    "email": "filip.pagliaro.4567@student.uu.se",
+    "root": "C:/Users/Filip/Documents/Programming/RAC",
+    "host": "Filip-Dator",
+    "username": "Filip",
+    "executable": "A:\\Anaconda\\envs\\RL\\python.exe",
+    "cpu_count": 4,
+    "cpu_count_logical": 8,
+    "cpu_freq": {
+        "current": 4001.0,
+        "min": 0.0,
+        "max": 4001.0
+    },
+    "cpu_freq_per_core": [
+        {
+            "current": 4001.0,
+            "min": 0.0,
+            "max": 4001.0
+        }
+    ],
+    "disk": {
+        "total": 222.51488494873047,
+        "used": 95.07708740234375
+    },
+    "gpu": "NVIDIA GeForce RTX 2070 SUPER",
+    "gpu_count": 1,
+    "gpu_devices": [
+        {
+            "name": "NVIDIA GeForce RTX 2070 SUPER",
+            "memory_total": 8589934592
+        }
+    ],
+    "memory": {
+        "total": 23.9029541015625
+    }
+}
