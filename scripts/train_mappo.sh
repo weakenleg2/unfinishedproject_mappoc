@@ -17,6 +17,10 @@ seed=1
 #exp="mappo_hidden_size_comparision"
 #hidden_sizes=(32 64 128 256)
 
+module load conda
+conda activate RAC
+cd /home/pagliaro/project/RAC
+
 #
 #echo "env is ${env}, scenario is ${scenario}, algo is ${algo}, exp is ${exp}, max seed is ${seed_max}"
 #for size in ${hidden_sizes[@]};
