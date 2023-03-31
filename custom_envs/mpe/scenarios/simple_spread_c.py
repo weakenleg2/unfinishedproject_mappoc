@@ -116,7 +116,7 @@ class Scenario(BaseScenario):
             agent.name = f"agent_{i}"
             agent.collide = True
             agent.silent = False
-            agent.size = 0.1
+            agent.size = 0.15
             agent.action_callback = self.action_callback
             self.last_message[agent.name] = np.zeros(world.dim_p)
         # add landmarks
