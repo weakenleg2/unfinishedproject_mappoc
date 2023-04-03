@@ -66,15 +66,12 @@ class R_Actor(nn.Module):
 
         control_features = self.base_ctrl(obs)
         communication_features = self.base_com(obs)
-
         #if self._use_naive_recurrent_policy or self._use_recurrent_policy:
             #actor_features, rnn_states = self.rnn(actor_features, rnn_states, masks)
 
         ctrl_actions, ctrl_action_log_probs = self.act_ctrl(control_features, available_actions, deterministic)
         com_actions, com_action_log_probs = self.act_com(communication_features, available_actions, deterministic)
-        #print(ctrl_actions)
-        #print(com_actions)
-
+        
         actions = torch.cat((ctrl_actions, com_actions), dim=-1)
         action_log_probs = torch.cat((ctrl_action_log_probs, com_action_log_probs), dim=-1)
 

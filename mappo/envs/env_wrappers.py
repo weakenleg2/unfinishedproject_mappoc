@@ -144,6 +144,7 @@ def worker(remote, parent_remote, env_fn_wrapper):
         cmd, data = remote.recv()
         if cmd == 'step':
             ob, reward, done, _, info = env.step(data)
+            done = np.array(list(done.values()))
             if 'bool' in done.__class__.__name__:
                 if done:
                     ob = env.reset()
@@ -664,6 +665,7 @@ class DummyVecEnv(ShareVecEnv):
         env = self.envs[0]
         ShareVecEnv.__init__(self, len(
             env_fns), env.observation_space, env.state_space, env.action_space)
+        self.last_actions = None
         self.actions = None
 
     def step_async(self, actions):
@@ -672,7 +674,7 @@ class DummyVecEnv(ShareVecEnv):
     def step_wait(self):
         results = [env.step(a) for (a, env) in zip(self.actions, self.envs)]
         obs, rews, dones, _, infos = map(np.array, zip(*results))
-
+        dones = np.array([list(x.values()) for x in dones])
         for (i, done) in enumerate(dones):
             if 'bool' in done.__class__.__name__:
                 if done:
@@ -681,11 +683,13 @@ class DummyVecEnv(ShareVecEnv):
                 if np.all(done):
                     obs[i] = self.envs[i].reset()
 
+        self.last_actions = self.actions
         self.actions = None
         return obs, rews, dones, infos
 
     def reset(self):
         obs = [env.reset() for env in self.envs]
+        self.actions = None
         return np.array(obs)
 
     def close(self):

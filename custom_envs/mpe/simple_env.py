@@ -1,4 +1,5 @@
 import os
+import time
 
 import gymnasium
 import numpy as np
@@ -10,6 +11,7 @@ from pettingzoo import AECEnv
 from pettingzoo.mpe._mpe_utils.core import Agent
 from pettingzoo.utils import wrappers
 from pettingzoo.utils.agent_selector import agent_selector
+
 
 alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
@@ -84,10 +86,7 @@ class SimpleEnv(AECEnv):
             else:
                 space_dim = 1
             if not agent.silent:
-                if self.continuous_actions:
-                    space_dim += self.world.dim_c
-                else:
-                    space_dim += self.world.dim_c
+                space_dim += self.world.dim_c
 
             obs_dim = len(self.scenario.observation(agent, self.world))
             state_dim += obs_dim
@@ -97,7 +96,7 @@ class SimpleEnv(AECEnv):
                     low=-1, high=1, shape=(self.world.dim_p,)
                 ),
                 spaces.Discrete(self.world.dim_c),
-            ]
+                ]
             )
 
             self.observation_spaces[agent.name] = spaces.Box(
@@ -110,7 +109,7 @@ class SimpleEnv(AECEnv):
         self.state_space = spaces.Box(
             low=-np.float32(np.inf),
             high=+np.float32(np.inf),
-            shape=(state_dim,),
+            shape=(state_dim + (space_dim - 1) * len(self.world.agents),),
             dtype=np.float32,
         )
 
@@ -238,7 +237,7 @@ class SimpleEnv(AECEnv):
             self.steps += 1
             if self.steps >= self.max_cycles:
                 for a in self.agents:
-                    self.truncations[a] = True
+                    self.terminations[a] = True
         else:
             self._clear_rewards()
 

@@ -18,7 +18,7 @@ def make_train_env(all_args):
     def get_env_fn(rank):
         def init_env():
             env = simple_spread_c_v2.parallel_env(N=all_args.num_agents, communication_penalty=-0.1,
-                local_ratio=0.5, max_cycles=40, continuous_actions=True)
+                local_ratio=0.5, max_cycles=25 , continuous_actions=True)
             #env.seed(all_args.seed + rank * 1000)
             return env
         return init_env

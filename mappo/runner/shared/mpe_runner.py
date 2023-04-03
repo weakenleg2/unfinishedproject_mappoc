@@ -4,6 +4,7 @@ import torch
 from mappo.runner.shared.base_runner import Runner
 import wandb
 import imageio
+from gymnasium.spaces.utils import flatdim
 
 def _t2n(x):
   return x.detach().cpu().numpy()
@@ -51,7 +52,7 @@ class MPERunner(Runner):
               obs = self.dict_to_tensor(obs)
               rewards = self.dict_to_tensor(rewards, False)
               rewards = np.expand_dims(rewards, -1)
-              dones = self.dict_to_tensor(dones, False)
+              #dones = self.dict_to_tensor(dones, False)
 
               data = obs, rewards, dones, infos, values, actions, action_log_probs, rnn_states, rnn_states_critic
 
@@ -109,14 +110,20 @@ class MPERunner(Runner):
       # reset env
       obs = self.envs.reset()
       obs = self.dict_to_tensor(obs)
-
+      last_actions = np.zeros(
+          (self.n_rollout_threads, self.num_agents, flatdim(self.envs.action_space('agent_0')) - 1))
       # replay buffer
       if self.use_centralized_V:
             share_obs = obs.reshape(self.n_rollout_threads, -1)
             share_obs = np.expand_dims(share_obs, 1).repeat(
                 self.num_agents, axis=1)
+            last_actions = last_actions.reshape(self.n_rollout_threads, -1)
+            last_actions = np.expand_dims(last_actions, 1).repeat(
+                self.num_agents, axis=1)
       else:
             share_obs = obs
+
+      share_obs = np.concatenate([share_obs, last_actions], -1)
 
       self.buffer.share_obs[0] = share_obs.copy()
       self.buffer.obs[0] = obs.copy()
@@ -181,6 +188,11 @@ class MPERunner(Runner):
 
     if self.use_centralized_V:
         share_obs = obs.reshape(self.n_rollout_threads, -1)
+        last_actions = actions.reshape(self.n_rollout_threads, -1)
+        #last_actions = np.expand_dims(last_actions, 1).repeat(
+                #self.num_agents, axis=1)
+        last_actions = last_actions.reshape(self.n_rollout_threads, -1)
+        share_obs = np.concatenate([share_obs, last_actions], -1)
         share_obs = np.expand_dims(share_obs, 1).repeat(
             self.num_agents, axis=1)
     else:
