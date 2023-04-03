@@ -178,7 +178,7 @@ if __name__ == '__main__':
                      device=device,
                      gamma=args.gamma, lr=args.lr, tau=args.tau)
 
-  best = -1000000000
+  best = float('-inf')
   eval_counter = 0
   for i in range(args.n_episodes):
     tot_reward, comms, steps = run_episode(
