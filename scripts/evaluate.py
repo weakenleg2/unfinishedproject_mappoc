@@ -1,7 +1,7 @@
 import time
 import argparse
 import gym
-from custom_envs import simple_spread_c_v2
+from custom_envs.mpe import simple_spread_c_v2
 import numpy as np
 import torch
 from algorithms.resource_aware_maddpg import RA_MADDPG
@@ -50,7 +50,7 @@ if __name__ == '__main__':
 
   while env.agents:
     actions, logits = get_actions(obs, env, maddpg, False)
-    #print(actions)
+    print(actions)
     next_obs, rewards, dones, truncations, infos = env.step(actions)
     next_obs = preprocess_obs(next_obs)
     obs = next_obs

@@ -73,12 +73,12 @@ class Runner(object):
 
         self.policy = []
         for agent_id in range(self.num_agents):
-            share_observation_space = self.envs.share_observation_space[agent_id] if self.use_centralized_V else self.envs.observation_space[agent_id]
+            share_observation_space = self.envs.share_observation_space if self.use_centralized_V else self.envs.observation_space('agent_0')
             # policy network
             po = Policy(self.all_args,
-                        self.envs.observation_space[agent_id],
+                        self.envs.observation_space('agent_0'),
                         share_observation_space,
-                        self.envs.action_space[agent_id],
+                        self.envs.action_space('agent_0'),
                         device = self.device)
             self.policy.append(po)
 
@@ -91,11 +91,11 @@ class Runner(object):
             # algorithm
             tr = TrainAlgo(self.all_args, self.policy[agent_id], device = self.device)
             # buffer
-            share_observation_space = self.envs.share_observation_space[agent_id] if self.use_centralized_V else self.envs.observation_space[agent_id]
+            share_observation_space = self.envs.share_observation_space[agent_id] if self.use_centralized_V else self.envs.observation_space('agent_0')
             bu = SeparatedReplayBuffer(self.all_args,
-                                       self.envs.observation_space[agent_id],
+                                       self.envs.observation_space('agent_0'),
                                        share_observation_space,
-                                       self.envs.action_space[agent_id])
+                                       self.envs.action_space('agent_0'))
             self.buffer.append(bu)
             self.trainer.append(tr)
             

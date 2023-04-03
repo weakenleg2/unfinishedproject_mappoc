@@ -1,6 +1,7 @@
 import torch
 from torch import Tensor
 from torch.autograd import Variable
+import numpy as np
 import copy
 from utils.neuralnets import MLPNetwork
 from utils.noise import OUNoise
@@ -14,7 +15,7 @@ class RA_MADDPG(object):
     """
 
     def __init__(self, in_dim, out_dim, n_agents=3, 
-                 eps=1.0, eps_decay=0.01, gamma=0.95, 
+                 eps=1.0, eps_decay=1e6, gamma=0.95, 
                  tau=0.01, lr=0.01, 
                  actor_hidden_dim=128,
                  critic_hidden_dim=128,
@@ -76,6 +77,11 @@ class RA_MADDPG(object):
         self.eps_decay = eps_decay
         self.n_iter = 0
 
+        # Normalization
+        self.obs_mean = np.zeros(in_dim)
+        self.obs_M2= np.zeros(in_dim)
+        self.k = 0
+
         self.init_dict = {"lr": lr, 
                           "in_dim": in_dim,
                           "out_dim": out_dim,
@@ -85,6 +91,7 @@ class RA_MADDPG(object):
                           "gamma": gamma, "tau": tau,}
     
     def _get_actions(self, obs, agent):
+      obs = self.normalize(obs)
       control = self.control_policies[agent](obs)
       #control = control_params[:2]
       #control = (torch.randn(self.control_actions, device=self.device, requires_grad=True) * control_params[..., -2:]) + control_params[..., :-2]
@@ -101,6 +108,32 @@ class RA_MADDPG(object):
       comm = onehot_from_logits(comm)
       return torch.cat((control, comm), dim=-1)
 
+    def _norm_single(self, obs):
+      obs = np.array(obs)
+      self.k += 1
+      delta = obs - self.obs_mean
+      
+      self.obs_mean = self.obs_mean + delta / self.k
+      self.obs_M2 = self.obs_M2 + (delta * (obs - self.obs_mean))
+
+      if self.k < 2:
+        self.variance = np.ones_like(self.obs_M2)
+      else:
+        self.variance = self.obs_M2 / (self.k - 1)
+
+      std = self.variance ** 0.5
+
+      obs = (obs - self.obs_mean) / (std + 1e-8)
+      obs = np.clip(obs, -10, 10)
+      obs = torch.tensor(obs, dtype=torch.float32)
+      return obs
+
+    def normalize(self, obs):
+      if len(obs.shape) == 1:
+        return self._norm_single(obs)
+      else:
+        return torch.stack([self._norm_single(o) for o in obs])
+      
     def scale_noise(self, scale):
         """
         Scale noise for each agent
@@ -137,6 +170,9 @@ class RA_MADDPG(object):
         action = torch.cat((cont, discrete), dim=0)
         action = action.clamp(-1, 1)
         actions.append(action.detach())
+      
+      if self.curr_eps > 0.01:
+        self.curr_eps -= (1 / self.eps_decay)
 
       return actions
 
@@ -203,6 +239,22 @@ class RA_MADDPG(object):
                                 'pol_loss': pol_loss},
                                self.n_iter)
 
+    def update_all_targets(self, logger=None):
+        """
+        Update all target networks (called after normal updates have been
+        performed for each agent)
+        """
+        #soft_update(self.target_control_policy, self.control_policy, self.tau)
+        #soft_update(self.target_options_policy, self.options_policy, self.tau)
+
+        soft_update(self.target_critic, self.critic, self.tau)
+        self.n_iter += 1
+
+        if logger:
+          logger.add_scalar('agent/epsilon', self.curr_eps, self.n_iter)
+          logger.add_scalar('other/mean', self.obs_mean.mean(), self.n_iter)
+          logger.add_scalar('other/variance', self.variance.mean(), self.n_iter)
+
     def to_device(self, device):
       self.device = device
       self.critic.to(device)
@@ -215,17 +267,7 @@ class RA_MADDPG(object):
       #self.target_options_policy.to(device)
       self.target_critic.to(device)
 
-    def update_all_targets(self):
-        """
-        Update all target networks (called after normal updates have been
-        performed for each agent)
-        """
-        #soft_update(self.target_control_policy, self.control_policy, self.tau)
-        #soft_update(self.target_options_policy, self.options_policy, self.tau)
 
-        soft_update(self.target_critic, self.critic, self.tau)
-        self.curr_eps *= self.eps_decay
-        self.n_iter += 1
 
     def save(self, filename):
         """

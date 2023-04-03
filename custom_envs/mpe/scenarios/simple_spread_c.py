@@ -205,12 +205,12 @@ class Scenario(BaseScenario):
         for other in world.agents:
             if other is agent:
                 continue
-            comm.append(self.last_message[other.name])
+            comm.append(self.last_message[other.name] - agent.state.p_pos)
 
             #Skip semding other agent's position
             #other_pos.append(other.state.p_pos - agent.state.p_pos)
         obs = np.concatenate(
-            [agent.state.p_vel] + [agent.state.p_pos] +
+            [agent.state.p_vel] +
             entity_pos + other_pos + comm)
 
         return obs

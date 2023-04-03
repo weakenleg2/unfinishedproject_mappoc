@@ -66,9 +66,9 @@ def run_episode(env, agents, replay_buffer, args, training=True):
         update_counter = 0
         for j in range(agents.n_agents):
           sample = replay_buffer.sample(
-              args.batch_size, USE_CUDA, norm_rews=False)
+              args.batch_size, USE_CUDA, norm_rews=True)
           agents.update(sample, j, logger=writer)
-        agents.update_all_targets()
+        agents.update_all_targets(writer)
 
       obs = next_obs
       update_counter += 1
@@ -115,12 +115,12 @@ def parse_args():
   parser.add_argument('--lr', type=float, default=1e-2)
   parser.add_argument('--tau', type=float, default=5e-2)
   parser.add_argument('-e', '--epsilon', type=float, default=1)
-  parser.add_argument('--epsilon_decay', type=float, default=0.98)
-  parser.add_argument('--gamma', type=float, default=0.95)
-  parser.add_argument('--actor_hidden_dim', type=int, default=128)
-  parser.add_argument('--critic_hidden_dim', type=int, default=256)
+  parser.add_argument('--epsilon_decay', type=float, default=1e6)
+  parser.add_argument('--gamma', type=float, default=0.975)
+  parser.add_argument('--actor_hidden_dim', type=int, default=64)
+  parser.add_argument('--critic_hidden_dim', type=int, default=128)
 
-  parser.add_argument('--batch_size', type=int, default=128)
+  parser.add_argument('--batch_size', type=int, default=64)
   parser.add_argument('--update_interval', type=int, default=100)
 
   return parser.parse_args()
@@ -148,7 +148,7 @@ if __name__ == '__main__':
   args = parse_args()
   n_agents = args.n_agents
   global writer
-  writer = SummaryWriter('runs/' + args.experiment_name + args.run_name)
+  writer = SummaryWriter('runs/maddpg/' + args.experiment_name +'/' + args.run_name)
 
   if not os.path.exists(args.model_path):
     os.makedirs(args.model_path)
