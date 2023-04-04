@@ -39,77 +39,80 @@ class MPERunner(Runner):
     start = time.time()
     episodes = int(
     self.num_env_steps) // self.episode_length // self.n_rollout_threads
-    avg_episode_rewards = []
 
     for episode in range(episodes):
-          if self.use_linear_lr_decay:
-              self.trainer.policy.lr_decay(episode, episodes)
+        if self.use_linear_lr_decay:
+            self.trainer.policy.lr_decay(episode, episodes)
 
-          for step in range(self.episode_length):
+        tot_comms = 0
+        for step in range(self.episode_length):
               # Sample actions
-              values, actions, action_log_probs, rnn_states, rnn_states_critic, actions_env = self.collect(
-                  step)
+            values, actions, action_log_probs, rnn_states, rnn_states_critic, actions_env = self.collect(
+                step)
 
               # Obser reward and next obs
-              obs, rewards, dones, infos = self.envs.step(actions_env)
-              obs = self.dict_to_tensor(obs)
-              rewards = self.dict_to_tensor(rewards, False)
-              rewards = np.expand_dims(rewards, -1)
-              #dones = self.dict_to_tensor(dones, False)
+            obs, rewards, dones, infos = self.envs.step(actions_env)
+            obs = self.dict_to_tensor(obs)
+            rewards = self.dict_to_tensor(rewards, False)
+            rewards = np.expand_dims(rewards, -1)
+            #dones = self.dict_to_tensor(dones, False)
 
-              data = obs, rewards, dones, infos, values, actions, action_log_probs, rnn_states, rnn_states_critic
+            data = obs, rewards, dones, infos, values, actions, action_log_probs, rnn_states, rnn_states_critic
+            for info in infos:
+                tot_comms += info['comms']
 
-              # insert data into buffer
-              self.insert(data)
+            # insert data into buffer
+            self.insert(data)
 
-          # compute return and update network
-          self.compute()
-          train_infos = self.train()
+        # compute return and update network
+        self.compute()
+        train_infos = self.train()
 
-          # post process
-          total_num_steps = (episode + 1) * \
-              self.episode_length * self.n_rollout_threads
+        # post process
+        total_num_steps = (episode + 1) * \
+        self.episode_length * self.n_rollout_threads
 
-          # save model
-          if (episode % self.save_interval == 0 or episode == episodes - 1):
-              self.save()
+            # save model
+        if (episode % self.save_interval == 0 or episode == episodes - 1):
+            self.save()
 
-          # log information
-          if episode % self.log_interval == 0:
-              end = time.time()
-              print("\n Scenario {} Algo {} Exp {} updates {}/{} episodes, total num timesteps {}/{}, FPS {}.\n"
-                    .format(self.all_args.scenario_name,
-                            self.algorithm_name,
-                            self.experiment_name,
-                            episode,
-                            episodes,
-                            total_num_steps,
-                            self.num_env_steps,
-                            int(total_num_steps / (end - start))))
+        # log information
+        if episode % self.log_interval == 0:
+            end = time.time()
+            print("\n Scenario {} Algo {} Exp {} updates {}/{} episodes, total num timesteps {}/{}, FPS {}.\n"
+                .format(self.all_args.scenario_name,
+                        self.algorithm_name,
+                        self.experiment_name,
+                        episode,
+                        episodes,
+                        total_num_steps,
+                        self.num_env_steps,
+                        int(total_num_steps / (end - start))))
 
-              if self.env_name == "MPE":
-                  env_infos = {}
-                  for agent_id in range(self.num_agents):
-                      idv_rews = []
-                      for info in infos:
-                          if 'individual_reward' in info['agent_' + str(agent_id)].keys():
-                              idv_rews.append(
-                                  info['agent_' + str(agent_id)]['individual_reward'])
-                      agent_k = 'agent%i/individual_rewards' % agent_id
-                      env_infos[agent_k] = idv_rews
+            if self.env_name == "MPE":
+                env_infos = {}
+                for agent_id in range(self.num_agents):
+                    idv_rews = []
+                    for info in infos:
+                        if 'individual_reward' in info['agent_' + str(agent_id)].keys():
+                            idv_rews.append(
+                                info['agent_' + str(agent_id)]['individual_reward'])
+                    agent_k = 'agent%i/individual_rewards' % agent_id
+                    env_infos[agent_k] = idv_rews
 
-              train_infos["average_episode_rewards"] = np.mean(
-                  self.buffer.rewards)
-              if ray.tune.is_session_enabled():
+            train_infos["average_episode_rewards"] = np.mean(
+                self.buffer.rewards)
+            if ray.tune.is_session_enabled():
                 session.report({"average_episode_rewards": train_infos["average_episode_rewards"]})
-              print("average episode rewards is {}".format(
-                  train_infos["average_episode_rewards"]))
-              self.log_train(train_infos, total_num_steps)
-              self.log_env(env_infos, total_num_steps)
+            print("average episode rewards is {}".format(
+                train_infos["average_episode_rewards"]))
+            self.log_train(train_infos, total_num_steps)
+            self.log_env(env_infos, total_num_steps)
 
           # eval
-          if episode % self.eval_interval == 0 and self.use_eval:
-              self.eval(total_num_steps)
+        self.writter.add_scalar('communication_savings', tot_comms / (self.episode_length * self.num_agents * self.n_rollout_threads), episode)
+        if episode % self.eval_interval == 0 and self.use_eval:
+            self.eval(total_num_steps)
 
   def warmup(self):
       # reset env
