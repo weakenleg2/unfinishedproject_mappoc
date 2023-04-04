@@ -269,7 +269,5 @@ def simple_train(args):
         runner.writter.export_scalars_to_json(str(runner.log_dir + '/summary.json'))
         runner.writter.close()
 
-    return runner.writter.get_scalars()
-
 if __name__ == "__main__":
     main(sys.argv[1:])

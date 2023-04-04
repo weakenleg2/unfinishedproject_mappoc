@@ -5,6 +5,8 @@ from mappo.runner.shared.base_runner import Runner
 import wandb
 import imageio
 from gymnasium.spaces.utils import flatdim
+import ray
+from ray.air import session
 
 def _t2n(x):
   return x.detach().cpu().numpy()
@@ -37,6 +39,7 @@ class MPERunner(Runner):
     start = time.time()
     episodes = int(
     self.num_env_steps) // self.episode_length // self.n_rollout_threads
+    avg_episode_rewards = []
 
     for episode in range(episodes):
           if self.use_linear_lr_decay:
@@ -97,6 +100,8 @@ class MPERunner(Runner):
 
               train_infos["average_episode_rewards"] = np.mean(
                   self.buffer.rewards) * self.episode_length
+              if ray.tune.is_session_enabled():
+                session.report({"average_episode_rewards": train_infos["average_episode_rewards"]})
               print("average episode rewards is {}".format(
                   train_infos["average_episode_rewards"]))
               self.log_train(train_infos, total_num_steps)

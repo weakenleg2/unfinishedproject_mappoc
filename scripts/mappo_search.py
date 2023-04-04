@@ -25,7 +25,7 @@ if __name__ == '__main__':
       "n_render_rollout_threads": 1,
       "num_env_steps": 1e6,
       "pop_art": tune.choice([True, False]),
-      "episode_length": 100,
+      "episode_length": tune.randint(25, 1000),
       "env_name": "MPE",
       "num_agents": args.num_agents,
       "share_policy": True,
