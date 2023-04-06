@@ -5,7 +5,7 @@
 #SBATCH -n 1
 #SBATCH -t 12:00:00
 #SBATCH -J "ra_mappo"
-#SBATCH -o /home/pagliaro/project/RAC/outs/slurm.%j.out
+#SBATCH -o /home/pagliaro/project/RAC/outs/%j.out
 
 PYTHON=/proj/uppmax2023-2-14/envs/RAC/bin/python3
 
