@@ -18,7 +18,7 @@ module load conda
 conda activate RAC
 cd /home/pagliaro/project/RAC
 
-$PYTHON train_mappo.py --env_name ${env} --algorithm_name ${algo} \
+$PYTHON scripts/train_mappo.py --env_name ${env} --algorithm_name ${algo} \
     --scenario_name ${scenario} --seed ${seed} \
     --n_training_threads 1 --n_rollout_threads 128 --num_mini_batch 1 --episode_length 25 --num_env_steps 20000000 \
     --ppo_epoch 10 --gain 0.01 --lr 7e-4 --critic_lr 7e-4 $@
