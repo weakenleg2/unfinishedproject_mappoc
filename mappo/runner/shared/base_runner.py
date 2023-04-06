@@ -128,6 +128,7 @@ class Runner(object):
         """Save policy's actor and critic networks."""
         policy_actor = self.trainer.policy.actor
         torch.save(policy_actor.state_dict(), str(self.save_dir) + "/actor.pt")
+        torch.save(self.trainer.policy.init_dict, str(self.save_dir) + "/init.pt")
         policy_critic = self.trainer.policy.critic
         torch.save(policy_critic.state_dict(), str(self.save_dir) + "/critic.pt")
         if self.trainer._use_valuenorm:

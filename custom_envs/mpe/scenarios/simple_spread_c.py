@@ -107,9 +107,13 @@ class Scenario(BaseScenario):
         world.dim_c = 2
         num_agents = N
         num_landmarks = N
+        self.n_collisions = 0
         world.collaborative = True
         self.communication_penalty = communication_penalty
-        self.last_message= {}
+        self.last_message = {}
+        self.world_min = -1 - (0.1 * num_agents)
+        self.world_max = 1 + (0.1 * num_agents)
+
         # add agents
         world.agents = [Agent() for i in range(num_agents)]
         for i, agent in enumerate(world.agents):
@@ -129,6 +133,7 @@ class Scenario(BaseScenario):
 
     def reset_world(self, world):
         # random properties for agents
+        self.n_collisions = 0
         for _, agent in enumerate(world.agents):
             agent.color = np.array([0.35, 0.35, 0.85])
             self.last_message[agent.name] = np.zeros(world.dim_p)
@@ -137,11 +142,11 @@ class Scenario(BaseScenario):
             landmark.color = np.array([0.25, 0.25, 0.25])
         # set random initial states
         for agent in world.agents:
-            agent.state.p_pos = np.random.uniform(-1, +1, world.dim_p)
+            agent.state.p_pos = np.random.uniform(self.world_min, self.world_max, world.dim_p)
             agent.state.p_vel = np.zeros(world.dim_p)
             agent.state.c = np.zeros(world.dim_c)
         for _, landmark in enumerate(world.landmarks):
-            landmark.state.p_pos = np.random.uniform(-1, +1, world.dim_p)
+            landmark.state.p_pos = np.random.uniform(self.world_min, self.world_max, world.dim_p)
             landmark.state.p_vel = np.zeros(world.dim_p)
 
     def benchmark_data(self, agent, world):
@@ -179,6 +184,8 @@ class Scenario(BaseScenario):
                 if a.name == agent.name:
                     continue
                 is_collision = (self.is_collision(a, agent))
+                if is_collision:
+                    self.n_collisions += 1
                 rew -= 1.0 * is_collision
         if agent.action.c[0] > agent.action.c[1]:
             rew += self.communication_penalty

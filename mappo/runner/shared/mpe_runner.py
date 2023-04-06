@@ -110,7 +110,7 @@ class MPERunner(Runner):
             self.log_env(env_infos, total_num_steps)
 
           # eval
-        self.writter.add_scalar('communication_savings', tot_comms / (self.episode_length * self.num_agents * self.n_rollout_threads), episode)
+        self.writter.add_scalar('communication_savings', 1 - tot_comms / (self.episode_length * self.num_agents * self.n_rollout_threads), episode)
         if episode % self.eval_interval == 0 and self.use_eval:
             self.eval(total_num_steps)
 
