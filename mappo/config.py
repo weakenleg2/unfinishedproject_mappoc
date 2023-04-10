@@ -179,9 +179,11 @@ def get_config():
     parser.add_argument("--use_wandb", action='store_false', default=True, help="[for wandb usage], by default True, will log date to wandb server. or else will use tensorboard to log data.")
 
     # env parameters
-    parser.add_argument("--env_name", type=str, default='StarCraft2', help="specify the name of environment")
+    parser.add_argument("--env_name", type=str, default='MPE', help="specify the name of environment")
     parser.add_argument("--use_obs_instead_of_state", action='store_true',
                         default=False, help="Whether to use global state or concatenated obs")
+    parser.add_argument("--full_comm", action='store_true', help="if agents have full communication")
+    parser.add_argument("--comm_penalty", type=float, default=0.01, help="Penalty for communication (will be negated)")
 
     # replay buffer parameters
     parser.add_argument("--episode_length", type=int,
@@ -196,8 +198,10 @@ def get_config():
                         help="Dimension of hidden layers for actor/critic networks")
     parser.add_argument("--use_stacked_frames", action='store_true',
                         default=False, help="Whether to use stacked_frames")
-    parser.add_argument("--hidden_size", type=int, default=64,
-                        help="Dimension of hidden layers for actor/critic networks") 
+    parser.add_argument("--actor_hidden_size", type=int, default=64,
+                        help="Dimension of hidden layers for actornetworks") 
+    parser.add_argument("--critic_hidden_size", type=int, default=64,
+                        help="Dimension of hidden layers for critic networks") 
     parser.add_argument("--layer_N", type=int, default=1,
                         help="Number of layers for actor/critic networks")
     parser.add_argument("--use_ReLU", action='store_false',
@@ -274,6 +278,7 @@ def get_config():
     parser.add_argument("--use_eval", action='store_true', default=False, help="by default, do not start evaluation. If set`, start evaluation alongside with training.")
     parser.add_argument("--eval_interval", type=int, default=25, help="time duration between contiunous twice evaluation progress.")
     parser.add_argument("--eval_episodes", type=int, default=32, help="number of episodes of a single evaluation.")
+    parser.add_argument("--render", action='store_true', help="if Environment should be rendered during training")
 
     # render parameters
     parser.add_argument("--save_gifs", action='store_true', default=False, help="by default, do not save render video. If set, save video.")

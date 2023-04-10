@@ -64,8 +64,9 @@ if __name__ == '__main__':
 
 
   if not args.random_actions:
-    state_dict = torch.load(args.filename)
-    policy = R_Actor(args, obs_space=env.observation_space('agent_0'), action_space=env.action_space('agent_0'))
+    state_dict = torch.load(args.filename + '/actor.pt')
+    init_dict = torch.load(args.filename + '/init.pt')
+    policy = R_Actor(init_dict, obs_space=env.observation_space('agent_0'), action_space=env.action_space('agent_0'))
     policy.load_state_dict(state_dict)
 
   tot_reward = 0

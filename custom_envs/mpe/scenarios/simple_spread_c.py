@@ -65,6 +65,7 @@ class raw_env(SimpleEnv, EzPickle):
         self,
         N=3,
         communication_penalty = -0.01,
+        full_comm=True,
         local_ratio=0.5,
         max_cycles=25,
         continuous_actions=False,
@@ -77,7 +78,7 @@ class raw_env(SimpleEnv, EzPickle):
             0.0 <= local_ratio <= 1.0
         ), "local_ratio is a proportion. Must be between 0 and 1."
         scenario = Scenario()
-        world = scenario.make_world(N, communication_penalty)
+        world = scenario.make_world(N, communication_penalty, full_comm)
         super().__init__(
             scenario=scenario,
             world=world,
@@ -93,6 +94,10 @@ parallel_env = parallel_wrapper_fn(env)
 
 class Scenario(BaseScenario):
     def action_callback(self, agent, _): 
+      #To test full comm
+      if self.full_comm:
+        agent.action.c = np.array([1, 0])
+
       if agent.action.c[0] > agent.action.c[1]:
         self.last_message[agent.name] = agent.state.p_pos
         agent.color = np.array([0, 1, 0])
@@ -101,7 +106,7 @@ class Scenario(BaseScenario):
 
       return agent.action
 
-    def make_world(self, N=3, communication_penalty = -0.01):
+    def make_world(self, N=3, communication_penalty = -0.01, full_comm=False):
         world = World()
         # set any world properties first
         world.dim_c = 2
@@ -109,6 +114,7 @@ class Scenario(BaseScenario):
         num_landmarks = N
         self.n_collisions = 0
         world.collaborative = True
+        self.full_comm = full_comm
         self.communication_penalty = communication_penalty
         self.last_message = {}
         self.world_min = -1 - (0.1 * num_agents)
@@ -122,7 +128,7 @@ class Scenario(BaseScenario):
             agent.silent = False
             agent.size = 0.15
             agent.action_callback = self.action_callback
-            self.last_message[agent.name] = np.zeros(world.dim_p)
+            self.last_message[agent.name] = None
         # add landmarks
         world.landmarks = [Landmark() for i in range(num_landmarks)]
         for i, landmark in enumerate(world.landmarks):
@@ -136,7 +142,7 @@ class Scenario(BaseScenario):
         self.n_collisions = 0
         for _, agent in enumerate(world.agents):
             agent.color = np.array([0.35, 0.35, 0.85])
-            self.last_message[agent.name] = np.zeros(world.dim_p)
+            self.last_message[agent.name] = None
         # random properties for landmarks
         for _, landmark in enumerate(world.landmarks):
             landmark.color = np.array([0.25, 0.25, 0.25])
@@ -212,12 +218,15 @@ class Scenario(BaseScenario):
         for other in world.agents:
             if other is agent:
                 continue
-            comm.append(self.last_message[other.name] - agent.state.p_pos)
+            if self.last_message[other.name] is None:
+                comm.append(np.zeros(world.dim_p))
+            else:
+              comm.append(self.last_message[other.name] - agent.state.p_pos)
 
             #Skip semding other agent's position
             #other_pos.append(other.state.p_pos - agent.state.p_pos)
         obs = np.concatenate(
-            [agent.state.p_vel] +
+            [agent.state.p_pos] + [agent.state.p_vel] +
             entity_pos + other_pos + comm)
 
         return obs

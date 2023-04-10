@@ -187,7 +187,7 @@ class MPERunner(Runner):
     obs, rewards, dones, infos, values, actions, action_log_probs, rnn_states, rnn_states_critic = data
 
     rnn_states[dones == True] = np.zeros(
-          ((dones == True).sum(), self.recurrent_N, self.hidden_size), dtype=np.float32)
+          ((dones == True).sum(), self.recurrent_N, self.actor_hidden_size), dtype=np.float32)
     rnn_states_critic[dones == True] = np.zeros(((dones == True).sum(
       ), *self.buffer.rnn_states_critic.shape[3:]), dtype=np.float32)
     masks = np.ones(
@@ -254,7 +254,7 @@ class MPERunner(Runner):
         eval_episode_rewards.append(eval_rewards)
 
         eval_rnn_states[eval_dones == True] = np.zeros(
-            ((eval_dones == True).sum(), self.recurrent_N, self.hidden_size), dtype=np.float32)
+            ((eval_dones == True).sum(), self.recurrent_N, self.actor_hidden_size), dtype=np.float32)
         eval_masks = np.ones(
             (self.n_eval_rollout_threads, self.num_agents, 1), dtype=np.float32)
         eval_masks[eval_dones == True] = np.zeros(
@@ -285,7 +285,7 @@ class MPERunner(Runner):
             envs.render('human')
 
         rnn_states = np.zeros((self.n_rollout_threads, self.num_agents,
-                              self.recurrent_N, self.hidden_size), dtype=np.float32)
+                              self.recurrent_N, self.actor_hidden_size), dtype=np.float32)
         masks = np.ones(
             (self.n_rollout_threads, self.num_agents, 1), dtype=np.float32)
 
@@ -326,7 +326,7 @@ class MPERunner(Runner):
             episode_rewards.append(rewards)
 
             rnn_states[dones == True] = np.zeros(
-                ((dones == True).sum(), self.recurrent_N, self.hidden_size), dtype=np.float32)
+                ((dones == True).sum(), self.recurrent_N, self.actor_hidden_size), dtype=np.float32)
             masks = np.ones(
                 (self.n_rollout_threads, self.num_agents, 1), dtype=np.float32)
             masks[dones == True] = np.zeros(

@@ -18,7 +18,7 @@ class R_Actor(nn.Module):
     """
     def __init__(self, args, obs_space, action_space, device=torch.device("cpu")):
         super(R_Actor, self).__init__()
-        self.hidden_size = args.hidden_size
+        self.hidden_size = args.actor_hidden_size
 
         self._gain = args.gain
         self._use_orthogonal = args.use_orthogonal
@@ -33,8 +33,8 @@ class R_Actor(nn.Module):
         
         #Hack since we're only using MPE
         base = MLPBase
-        self.base_ctrl = base(args, obs_shape)
-        self.base_com = base(args, obs_shape)
+        self.base_ctrl = base(args, self.hidden_size, obs_shape)
+        self.base_com = base(args, self.hidden_size, obs_shape)
 
         #if self._use_naive_recurrent_policy or self._use_recurrent_policy:
             #self.rnn = RNNLayer(self.hidden_size, self.hidden_size, self._recurrent_N, self._use_orthogonal)
@@ -134,7 +134,7 @@ class R_Critic(nn.Module):
     """
     def __init__(self, args, cent_obs_space, device=torch.device("cpu")):
         super(R_Critic, self).__init__()
-        self.hidden_size = args.hidden_size
+        self.hidden_size = args.critic_hidden_size
         self._use_orthogonal = args.use_orthogonal
         self._use_naive_recurrent_policy = args.use_naive_recurrent_policy
         self._use_recurrent_policy = args.use_recurrent_policy
@@ -145,7 +145,7 @@ class R_Critic(nn.Module):
 
         cent_obs_shape = (flatdim(cent_obs_space),)
         base = CNNBase if len(cent_obs_shape) == 3 else MLPBase
-        self.base = base(args, cent_obs_shape)
+        self.base = base(args, self.hidden_size, cent_obs_shape)
 
         if self._use_naive_recurrent_policy or self._use_recurrent_policy:
             self.rnn = RNNLayer(self.hidden_size, self.hidden_size, self._recurrent_N, self._use_orthogonal)

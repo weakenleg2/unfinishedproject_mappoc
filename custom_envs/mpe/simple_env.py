@@ -161,13 +161,13 @@ class SimpleEnv(AECEnv):
 
     def _execute_world_step(self):
         # set action for each agent
-        self.infos['comms'] = 0
         for i, agent in enumerate(self.world.agents):
             action = self.current_actions[i]
             self._set_action(action, agent,
                              self.action_spaces[agent.name])
+            agent.action = agent.action_callback(agent, self.world)
             if agent.action.c[0] > agent.action.c[1]:
-              self.infos['comms'] += 1
+                self.infos['comms'] += 1
 
         self.world.step()
 
@@ -233,6 +233,7 @@ class SimpleEnv(AECEnv):
         self.current_actions[current_idx] = action
 
         if next_idx == 0:
+            self.infos['comms'] = 0
             self._execute_world_step()
             self.steps += 1
             if self.steps >= self.max_cycles:

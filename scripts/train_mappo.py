@@ -17,7 +17,7 @@ from mappo.envs.env_wrappers import SubprocVecEnv, DummyVecEnv
 def make_train_env(all_args):
     def get_env_fn(rank):
         def init_env():
-            env = simple_spread_c_v2.parallel_env(N=all_args.num_agents, communication_penalty=-0.1,
+            env = simple_spread_c_v2.parallel_env(N=all_args.num_agents, render_mode= 'human', full_comm=all_args.full_comm,  communication_penalty=-all_args.comm_penalty,
                 local_ratio=0.5, max_cycles=25 , continuous_actions=True)
             #env.seed(all_args.seed + rank * 1000)
             return env
