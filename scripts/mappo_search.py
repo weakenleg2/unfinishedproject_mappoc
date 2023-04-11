@@ -8,7 +8,7 @@ from train_mappo import simple_train
 def parse_args():
   parser = argparse.ArgumentParser()
   parser.add_argument('num_agents', type=int, default=2)
-  parser.add_argument('--logdir', type=str, default="./ray_results")
+  parser.add_argument('--logdir', type=str, default="/ray_results")
   return parser.parse_args()
 
 if __name__ == '__main__':
@@ -22,7 +22,7 @@ if __name__ == '__main__':
       "cuda": False,
       "seed": tune.randint(1,10),
       "n_training_threads": 1,
-      "n_rollout_threads": 8,
+      "n_rollout_threads": 1,
       "n_eval_rollout_threads": 1,
       "n_render_rollout_threads": 1,
       "num_env_steps": 1e6,
@@ -41,10 +41,10 @@ if __name__ == '__main__':
       "clip_param": 0.2,
       "gae_lambda":tune.uniform(0.9, 1),
       "gamma":tune.uniform(0.9, 1),
-      "lr": tune.uniform(1e-7, 1e-2),
+      "lr": tune.uniform(1e-7, 1e-4),
       "entropy_coef": tune.uniform(0.0001, 0.1),
       "comm_penatly": 0,
-      "critic_lr": tune.uniform(1e-7, 1e-2),
+      "critic_lr": tune.uniform(1e-7, 1e-4),
       "local_ratio": tune.uniform(0.1, 0.9),
       "full_comm": True,
   }
