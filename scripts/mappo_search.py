@@ -45,6 +45,7 @@ if __name__ == '__main__':
       "entropy_coef": tune.uniform(0.0001, 0.1),
       "comm_penatly": 0,
       "critic_lr": tune.uniform(1e-7, 1e-2),
+      "local_ratio": tune.uniform(0.1, 0.9),
       "full_comm": True,
   }
 
