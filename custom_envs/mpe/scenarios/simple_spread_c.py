@@ -77,7 +77,6 @@ class raw_env(SimpleEnv, EzPickle):
             max_cycles=max_cycles, continuous_actions=continuous_actions, 
             render_mode=render_mode
         )
-        print("local_ratio:"  + str(local_ratio))
         assert (
             0.0 <= local_ratio <= 1.0
         ), "local_ratio is a proportion. Must be between 0 and 1."
