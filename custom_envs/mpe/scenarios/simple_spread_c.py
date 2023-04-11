@@ -64,7 +64,7 @@ class raw_env(SimpleEnv, EzPickle):
     def __init__(
         self,
         N=3,
-        communication_penalty = -0.01,
+        communication_penalty=-0.01,
         full_comm=True,
         local_ratio=0.5,
         max_cycles=25,
@@ -72,8 +72,12 @@ class raw_env(SimpleEnv, EzPickle):
         render_mode=None,
     ):
         EzPickle.__init__(
-            self, N, communication_penalty, local_ratio, max_cycles, continuous_actions, render_mode
+            self, N=N, communication_penalty=communication_penalty,  
+            local_ratio=local_ratio, full_comm=full_comm,
+            max_cycles=max_cycles, continuous_actions=continuous_actions, 
+            render_mode=render_mode
         )
+        print("local_ratio:"  + str(local_ratio))
         assert (
             0.0 <= local_ratio <= 1.0
         ), "local_ratio is a proportion. Must be between 0 and 1."
