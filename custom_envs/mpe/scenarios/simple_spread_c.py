@@ -221,10 +221,11 @@ class Scenario(BaseScenario):
         for other in world.agents:
             if other is agent:
                 continue
+            message = self.last_message[other.name]
             if self.last_message[other.name] is None:
-                comm.append(np.zeros(world.dim_p))
-            else:
-              comm.append(self.last_message[other.name] - agent.state.p_pos)
+                message = np.zeros(world.dim_p)
+                
+            comm.append(message - agent.state.p_pos)
 
             #Skip semding other agent's position
             #other_pos.append(other.state.p_pos - agent.state.p_pos)

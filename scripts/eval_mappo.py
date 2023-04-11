@@ -19,14 +19,14 @@ def preprocess_obs(obs):
   # obs = obs / (obs.std() + 1e-8)
   return obs
 
-def get_actions(obs, env, policy, training=False):
+def get_actions(obs, env, rnn_state, policy, training=False):
   actions = {}
-  logits, _, _ = policy(obs, torch.tensor(0), torch.tensor(0))
+  logits, _, rnn_state = policy(obs, rnn_state, torch.tensor(0))
   for i, agent in enumerate(env.possible_agents):
     #actions[agent] = torch.tensor([-1, 1, 0])
     actions[agent] = logits[i]
 
-  return actions, logits
+  return actions, logits, rnn_state
 
 if __name__ == '__main__':
 
@@ -60,17 +60,15 @@ if __name__ == '__main__':
                                       continuous_actions=True,
                                       render_mode = 'human')
 
-
-
-
   if not args.random_actions:
     state_dict = torch.load(args.filename + '/actor.pt')
     init_dict = torch.load(args.filename + '/init.pt')
     policy = R_Actor(init_dict, obs_space=env.observation_space('agent_0'), action_space=env.action_space('agent_0'))
     policy.load_state_dict(state_dict)
+    rnn_state = torch.zeros(init_dict.num_agents, init_dict.recurrent_N, init_dict.actor_hidden_size * 2)
 
   tot_reward = 0
-  seeds = range(100)
+  seeds = range(10)
 
   for s in seeds:
     seed_reward = np.zeros(args.n_agents)
@@ -88,7 +86,7 @@ if __name__ == '__main__':
           actions['agent_{}'.format(n)] = a
         #print(actions)
       else:
-        actions, logits = get_actions(obs, env, policy, False)
+        actions, logits, rnn_state = get_actions(obs, env, rnn_state, policy, False)
 
       #print(actions)
       next_obs, rewards, dones, truncations, infos = env.step(actions)
@@ -101,5 +99,4 @@ if __name__ == '__main__':
     tot_reward += seed_reward.mean()
 
   print(tot_reward / len(seeds))
-
   env.close()

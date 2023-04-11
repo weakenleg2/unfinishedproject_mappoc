@@ -36,8 +36,9 @@ class R_Actor(nn.Module):
         self.base_ctrl = base(args, self.hidden_size, obs_shape)
         self.base_com = base(args, self.hidden_size, obs_shape)
 
-        #if self._use_naive_recurrent_policy or self._use_recurrent_policy:
-            #self.rnn = RNNLayer(self.hidden_size, self.hidden_size, self._recurrent_N, self._use_orthogonal)
+        if self._use_naive_recurrent_policy or self._use_recurrent_policy:
+            self.ctrl_rnn = RNNLayer(self.hidden_size, self.hidden_size, self._recurrent_N, self._use_orthogonal)
+            self.com_rnn = RNNLayer(self.hidden_size, self.hidden_size, self._recurrent_N, self._use_orthogonal)
 
         self.act_ctrl = ACTLayer(action_space[0], self.hidden_size, self._use_orthogonal, self._gain)
         self.act_com = ACTLayer(action_space[1], self.hidden_size, self._use_orthogonal, self._gain)
@@ -60,15 +61,18 @@ class R_Actor(nn.Module):
         """
         obs = check(obs).to(**self.tpdv)
         rnn_states = check(rnn_states).to(**self.tpdv)
+        rnn_states = rnn_states.split(int(self.hidden_size), dim=-1)
         masks = check(masks).to(**self.tpdv)
         if available_actions is not None:
             available_actions = check(available_actions).to(**self.tpdv)
 
         control_features = self.base_ctrl(obs)
         communication_features = self.base_com(obs)
-        #if self._use_naive_recurrent_policy or self._use_recurrent_policy:
-            #actor_features, rnn_states = self.rnn(actor_features, rnn_states, masks)
-
+        if self._use_naive_recurrent_policy or self._use_recurrent_policy:
+            control_features, ctrl_rnn_states = self.ctrl_rnn(control_features, rnn_states[0], masks)
+            communication_features, com_rnn_states = self.com_rnn(communication_features, rnn_states[1], masks)
+            rnn_states = torch.cat((ctrl_rnn_states, com_rnn_states), dim=-1)
+        
         ctrl_actions, ctrl_action_log_probs = self.act_ctrl(control_features, available_actions, deterministic)
         com_actions, com_action_log_probs = self.act_com(communication_features, available_actions, deterministic)
         
@@ -93,6 +97,7 @@ class R_Actor(nn.Module):
         """
         obs = check(obs).to(**self.tpdv)
         rnn_states = check(rnn_states).to(**self.tpdv)
+        rnn_states = rnn_states.split(int(self.hidden_size), dim=-1)
         action = check(action).to(**self.tpdv)
         masks = check(masks).to(**self.tpdv)
         if available_actions is not None:
@@ -104,8 +109,10 @@ class R_Actor(nn.Module):
         control_features = self.base_ctrl(obs)
         communication_features = self.base_com(obs)
 
-        #if self._use_naive_recurrent_policy or self._use_recurrent_policy:
-            #actor_features, rnn_states = self.rnn(actor_features, rnn_states, masks)
+        if self._use_naive_recurrent_policy or self._use_recurrent_policy:
+            control_features, ctrl_rnn_states = self.ctrl_rnn(control_features, rnn_states[0], masks)
+            communication_features, com_rnn_states = self.com_rnn(communication_features, rnn_states[1], masks)
+            rnn_states = torch.cat((ctrl_rnn_states, com_rnn_states), dim=-1)
 
         control_log_probs, control_dist_entropy = self.act_ctrl.evaluate_actions(control_features,
                                                                    action[:,:2], available_actions,
