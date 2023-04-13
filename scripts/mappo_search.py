@@ -9,6 +9,7 @@ def parse_args():
   parser = argparse.ArgumentParser()
   parser.add_argument('num_agents', type=int, default=2)
   parser.add_argument('--logdir', type=str, default="/ray_results")
+  parser.add_argument('--full_com', action='store_true')
   return parser.parse_args()
 
 def stopper(trial_id, result):
@@ -45,10 +46,10 @@ if __name__ == '__main__':
       "gamma":tune.uniform(0.9, 1),
       "lr": tune.uniform(1e-7, 1e-4),
       "entropy_coef": tune.uniform(0.001, 0.1),
-      "comm_penatly": 0,
+      "comm_penatly": tune.uniform(0.001, 1),
       "critic_lr": tune.uniform(1e-7, 1e-4),
       "local_ratio": tune.uniform(0.1, 0.9),
-      "full_comm": True,
+      "full_comm": args.full_com,
   }
 
   tune_config = tune.TuneConfig(
