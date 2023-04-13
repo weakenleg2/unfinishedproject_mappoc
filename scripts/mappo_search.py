@@ -22,7 +22,7 @@ if __name__ == '__main__':
       "algorithm_name": tune.choice(["mappo", 'rmappo']),
       "env_name": "MPE",
       "scenario_name": "simple_spread",
-      "experiment_name": "mappo_search_" + str(args.num_agents) + "_agents",
+      "experiment_name": "mappo_search_" + str(args.num_agents) + "_agents" + ("_full_com" if args.full_com else "_limited_com"),
       "cuda": False,
       "n_training_threads": 1,
       "n_rollout_threads": 1,
