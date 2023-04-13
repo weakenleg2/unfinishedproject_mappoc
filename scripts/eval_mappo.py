@@ -22,6 +22,7 @@ def preprocess_obs(obs):
 def get_actions(obs, env, rnn_state, policy, training=False):
   actions = {}
   logits, _, rnn_state = policy(obs, rnn_state, torch.tensor(0))
+  logits = np.clip(logits, -1, 1)
   for i, agent in enumerate(env.possible_agents):
     #actions[agent] = torch.tensor([-1, 1, 0])
     actions[agent] = logits[i]
@@ -88,7 +89,7 @@ if __name__ == '__main__':
       else:
         actions, logits, rnn_state = get_actions(obs, env, rnn_state, policy, False)
 
-      #print(actions)
+      print(actions)
       next_obs, rewards, dones, truncations, infos = env.step(actions)
       next_obs = preprocess_obs(next_obs)
       obs = next_obs

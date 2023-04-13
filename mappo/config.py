@@ -246,10 +246,10 @@ def get_config():
     parser.add_argument("--entropy_coef", type=float, default=0.01,
                         help='entropy term coefficient (default: 0.01)')
     parser.add_argument("--value_loss_coef", type=float,
-                        default=1, help='value loss coefficient (default: 0.5)')
+                        default=0.5, help='value loss coefficient (default: 0.5)')
     parser.add_argument("--use_max_grad_norm",
                         action='store_false', default=True, help="by default, use max norm of gradients. If set, do not use.")
-    parser.add_argument("--max_grad_norm", type=float, default=0.5,
+    parser.add_argument("--max_grad_norm", type=float, default= 10,
                         help='max norm of gradients (default: 0.5)')
     parser.add_argument("--use_gae", action='store_false',
                         default=True, help='use generalized advantage estimation')

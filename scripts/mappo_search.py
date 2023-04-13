@@ -11,23 +11,25 @@ def parse_args():
   parser.add_argument('--logdir', type=str, default="/ray_results")
   return parser.parse_args()
 
+def stopper(trial_id, result):
+  return result["average_episode_rewards"] < -3
+
 if __name__ == '__main__':
   args = parse_args()
 
   config = {
-      "algorithm_name": "mappo",
+      "algorithm_name": tune.choice(["mappo", 'rmappo']),
       "env_name": "MPE",
       "scenario_name": "simple_spread",
       "experiment_name": "mappo_search_" + str(args.num_agents) + "_agents",
       "cuda": False,
-      "seed": tune.randint(1,10),
       "n_training_threads": 1,
       "n_rollout_threads": 1,
       "n_eval_rollout_threads": 1,
       "n_render_rollout_threads": 1,
       "num_env_steps": 1e6,
       "pop_art": tune.choice([True, False]),
-      "episode_length": tune.randint(25, 250),
+      "episode_length": tune.choice([25, 50, 100]),
       "env_name": "MPE",
       "num_agents": args.num_agents,
       "share_policy": True,
@@ -42,7 +44,7 @@ if __name__ == '__main__':
       "gae_lambda":tune.uniform(0.9, 1),
       "gamma":tune.uniform(0.9, 1),
       "lr": tune.uniform(1e-7, 1e-4),
-      "entropy_coef": tune.uniform(0.0001, 0.1),
+      "entropy_coef": tune.uniform(0.001, 0.1),
       "comm_penatly": 0,
       "critic_lr": tune.uniform(1e-7, 1e-4),
       "local_ratio": tune.uniform(0.1, 0.9),
@@ -55,6 +57,7 @@ if __name__ == '__main__':
   )
   run_config =air.RunConfig(
     local_dir=args.logdir,
+    stop=stopper,
   )
   analysis = tune.Tuner(
     simple_train,

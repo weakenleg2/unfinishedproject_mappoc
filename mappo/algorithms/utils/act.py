@@ -81,10 +81,11 @@ class ACTLayer(nn.Module):
             action_logits = self.action_out(x, available_actions)
             actions = action_logits.mode() if deterministic else action_logits.sample() 
 
-            if self.action_space.__class__.__name__ == "Box":
-                actions = torch.clamp(actions, self.action_space.low[0], self.action_space.high[0])
             #actions = torch.transpose(actions, 0, 1)
             action_log_probs = action_logits.log_probs(actions)
+
+            #if self.action_space.__class__.__name__ == "Box":
+                #actions = torch.clamp(actions, self.action_space.low[0], self.action_space.high[0])
         
         return actions, action_log_probs
 

@@ -175,8 +175,9 @@ class MPERunner(Runner):
           actions_env = []
           for i in range(self.n_rollout_threads):
             acts = {}
+            clipped_actions = np.clip(actions, -1, 1)
             for j in range(self.num_agents):
-              acts['agent_' + str(j)] = np.squeeze(actions[i, j, :])
+              acts['agent_' + str(j)] = np.squeeze(clipped_actions[i, j, :])
               actions_env.append(acts)
               
           #raise NotImplementedError
@@ -194,7 +195,7 @@ class MPERunner(Runner):
           (self.n_rollout_threads, self.num_agents, 1), dtype=np.float32)
     masks[dones == True] = np.zeros(
       ((dones == True).sum(), 1), dtype=np.float32)
-
+    
     if self.use_centralized_V:
         share_obs = obs.reshape(self.n_rollout_threads, -1)
         last_actions = actions.reshape(self.n_rollout_threads, -1)

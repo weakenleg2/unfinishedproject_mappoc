@@ -72,6 +72,8 @@ class R_Actor(nn.Module):
             control_features, ctrl_rnn_states = self.ctrl_rnn(control_features, rnn_states[0], masks)
             communication_features, com_rnn_states = self.com_rnn(communication_features, rnn_states[1], masks)
             rnn_states = torch.cat((ctrl_rnn_states, com_rnn_states), dim=-1)
+        else:
+            rnn_states = torch.cat((rnn_states[0], rnn_states[1]), dim=-1)
         
         ctrl_actions, ctrl_action_log_probs = self.act_ctrl(control_features, available_actions, deterministic)
         com_actions, com_action_log_probs = self.act_com(communication_features, available_actions, deterministic)
@@ -113,6 +115,8 @@ class R_Actor(nn.Module):
             control_features, ctrl_rnn_states = self.ctrl_rnn(control_features, rnn_states[0], masks)
             communication_features, com_rnn_states = self.com_rnn(communication_features, rnn_states[1], masks)
             rnn_states = torch.cat((ctrl_rnn_states, com_rnn_states), dim=-1)
+        else:
+            rnn_states = torch.cat((rnn_states[0], rnn_states[1]), dim=-1)
 
         control_log_probs, control_dist_entropy = self.act_ctrl.evaluate_actions(control_features,
                                                                    action[:,:2], available_actions,
