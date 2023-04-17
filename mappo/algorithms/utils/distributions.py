@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from torch.distributions import Beta
 from .util import init
 
 """
@@ -51,6 +52,27 @@ class FixedBernoulli(torch.distributions.Bernoulli):
     def mode(self):
         return torch.gt(self.probs, 0.5).float()
 
+class FixedBeta(Beta):
+    def __init__(self, alpha, beta, low, high):
+        super().__init__(alpha, beta)
+        self.low = low
+        self.high = high
+
+    def sample(self, sample_shape=torch.Size()):
+        samples = super().sample(sample_shape)
+        return self.low + samples * (self.high - self.low)
+
+    def log_probs(self, actions):
+        epsilon = 1e-6
+        clipped_actions = torch.clamp(actions, self.low + epsilon, self.high - epsilon)
+        scaled_actions = (clipped_actions - self.low) / (self.high - self.low)
+        return super().log_prob(scaled_actions)
+
+    def entropy(self):
+        return super().entropy().sum(-1)
+
+    def mode(self):
+        return self.low + self.mean * (self.high - self.low)
 
 class Categorical(nn.Module):
     def __init__(self, num_inputs, num_outputs, use_orthogonal=True, gain=0.01):
@@ -80,7 +102,6 @@ class DiagGaussian(nn.Module):
         self.logstd = AddBias(torch.zeros(num_outputs))
         #self.logstd = init_(nn.Linear(num_inputs, num_outputs))
 
-
     def forward(self, x, availanle_actions=None):
         action_mean = self.fc_mean(x)
 
@@ -92,6 +113,21 @@ class DiagGaussian(nn.Module):
 
         return FixedNormal(action_mean, action_logstd.exp())
 
+class DiagBeta(DiagGaussian):
+    def __init__(self, num_inputs, num_outputs, low=0, high=1 ,use_orthogonal=True, gain=0.01):
+        super(DiagBeta, self).__init__(num_inputs, num_outputs, use_orthogonal, gain)
+        self.low = low
+        self.high = high
+
+    def forward(self, x, available_actions=None):
+        action_alpha = torch.exp(self.fc_mean(x))
+
+        zeros = torch.zeros(action_alpha.size())
+        if x.is_cuda:
+            zeros = zeros.cuda()
+
+        action_beta = torch.exp(self.logstd(zeros))
+        return FixedBeta(action_alpha, action_beta, self.low, self.high)
 
 class Bernoulli(nn.Module):
     def __init__(self, num_inputs, num_outputs, use_orthogonal=True, gain=0.01):

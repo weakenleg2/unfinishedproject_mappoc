@@ -1,4 +1,4 @@
-from .distributions import Bernoulli, Categorical, DiagGaussian
+from .distributions import Bernoulli, Categorical, DiagGaussian, DiagBeta
 import torch
 import torch.nn as nn
 from mappo.utils.util import get_shape_from_act_space
@@ -22,7 +22,7 @@ class ACTLayer(nn.Module):
             self.action_out = Categorical(inputs_dim, action_dim, use_orthogonal, gain)
         elif action_space.__class__.__name__ == "Box":
             action_dim = action_space.shape[0]
-            self.action_out = DiagGaussian(inputs_dim, action_dim, use_orthogonal, gain)
+            self.action_out = DiagBeta(inputs_dim, action_dim, action_space.low[0], action_space.high[0], use_orthogonal, gain)
         elif action_space.__class__.__name__ == "MultiBinary":
             action_dim = action_space.shape[0]
             self.action_out = Bernoulli(inputs_dim, action_dim, use_orthogonal, gain)
@@ -81,7 +81,6 @@ class ACTLayer(nn.Module):
             action_logits = self.action_out(x, available_actions)
             actions = action_logits.mode() if deterministic else action_logits.sample() 
 
-            #actions = torch.transpose(actions, 0, 1)
             action_log_probs = action_logits.log_probs(actions)
 
             #if self.action_space.__class__.__name__ == "Box":

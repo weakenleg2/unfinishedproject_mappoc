@@ -1,3 +1,4 @@
+import os
 import time
 import argparse
 import gym
@@ -6,6 +7,9 @@ import numpy as np
 import torch
 from mappo.algorithms.r_mappo.algorithm.r_actor_critic import R_Actor
 from algorithms.resource_aware_maddpg import RA_MADDPG
+
+def l2t(x):
+  return x
 
 def dict_to_tensor(d, unsqueeze_axis=0):
   d = list(d.values())
@@ -19,9 +23,26 @@ def preprocess_obs(obs):
   # obs = obs / (obs.std() + 1e-8)
   return obs
 
-def get_actions(obs, env, rnn_state, policy, training=False):
+def get_logits(obs, policies, rnn_state):
+  logits = []
+  new_rnn_state = []
+  for i, p in enumerate(policies):
+    o = obs[i].unsqueeze(0)
+    l, _, r = p(o, rnn_state[i], torch.tensor(0))
+    logits.append(l.squeeze(0))
+    new_rnn_state.append(r.squeeze(0))
+  
+  logits = torch.stack(logits)
+  new_rnn_state = torch.stack(new_rnn_state)
+  return logits, new_rnn_state
+
+def get_actions(obs, env, rnn_state, policies, training=False):
   actions = {}
-  logits, _, rnn_state = policy(obs, rnn_state, torch.tensor(0))
+  if len(policies) > 1:
+    logits, rnn_state = get_logits(obs, policies, rnn_state)
+  else:
+    logits, _, rnn_state = policies[0](obs, rnn_state, torch.tensor(0))
+
   logits = np.clip(logits, -1, 1)
   for i, agent in enumerate(env.possible_agents):
     #actions[agent] = torch.tensor([-1, 1, 0])
@@ -58,18 +79,28 @@ if __name__ == '__main__':
                                       N=args.n_agents,
                                       local_ratio = 0.5, 
                                       max_cycles=25, 
+                                      full_comm = False,
                                       continuous_actions=True,
                                       render_mode = 'human')
 
   if not args.random_actions:
-    state_dict = torch.load(args.filename + '/actor.pt')
     init_dict = torch.load(args.filename + '/init.pt')
-    policy = R_Actor(init_dict, obs_space=env.observation_space('agent_0'), action_space=env.action_space('agent_0'))
-    policy.load_state_dict(state_dict)
-    rnn_state = torch.zeros(init_dict.num_agents, init_dict.recurrent_N, init_dict.actor_hidden_size * 2)
+    actor_files = [f for f in os.listdir(args.filename) if f.startswith('actor_agent') and f.endswith('.pt')]
+
+    if len(actor_files) == 0 and os.path.isfile(os.path.join(args.filename, 'actor.pt')):
+        actor_files = ['actor.pt']
+    policies = []
+    for actor_file in actor_files :
+      state_dict = torch.load(os.path.join(args.filename, actor_file))
+    
+      policy = R_Actor(init_dict, obs_space=env.observation_space('agent_0'), action_space=env.action_space('agent_0'))
+      policy.load_state_dict(state_dict)
+      policies.append(policy)
+
+    rnn_state = torch.zeros(args.n_agents, init_dict.recurrent_N, init_dict.actor_hidden_size * 2) 
 
   tot_reward = 0
-  seeds = range(10)
+  seeds = range(5)
 
   for s in seeds:
     seed_reward = np.zeros(args.n_agents)
@@ -85,17 +116,16 @@ if __name__ == '__main__':
           a = env.action_space('agent_0').sample()
           a = (*a[0], a[1])
           actions['agent_{}'.format(n)] = a
-        #print(actions)
       else:
-        actions, logits, rnn_state = get_actions(obs, env, rnn_state, policy, False)
+        actions, logits, rnn_state = get_actions(obs, env, rnn_state, policies, False)
 
-      print(actions)
       next_obs, rewards, dones, truncations, infos = env.step(actions)
       next_obs = preprocess_obs(next_obs)
       obs = next_obs
       rewards = dict_to_tensor(rewards)
-      #print(env.aec_env.env.scenario.n_collisions / 2)
-      time.sleep(0.05)
+      #print((rewards - rewards.mean()) / rewards.std())
+      print(actions)
+      time.sleep(0.03)
       seed_reward = seed_reward + rewards.squeeze().numpy()
     tot_reward += seed_reward.mean()
 
