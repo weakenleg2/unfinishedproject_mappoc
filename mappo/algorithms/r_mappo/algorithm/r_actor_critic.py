@@ -68,6 +68,7 @@ class R_Actor(nn.Module):
 
         control_features = self.base_ctrl(obs)
         communication_features = self.base_com(obs)
+
         if self._use_naive_recurrent_policy or self._use_recurrent_policy:
             control_features, ctrl_rnn_states = self.ctrl_rnn(control_features, rnn_states[0], masks)
             communication_features, com_rnn_states = self.com_rnn(communication_features, rnn_states[1], masks)
@@ -119,17 +120,18 @@ class R_Actor(nn.Module):
             rnn_states = torch.cat((rnn_states[0], rnn_states[1]), dim=-1)
 
         control_log_probs, control_dist_entropy = self.act_ctrl.evaluate_actions(control_features,
-                                                                   action[:,:2], available_actions,
-                                                                   active_masks=
-                                                                   active_masks if self._use_policy_active_masks
-                                                                   else None)
+                                                                action[:,:2], available_actions,
+                                                                active_masks=
+                                                                active_masks if self._use_policy_active_masks
+                                                                else None)
 
         communication_log_probs, communication_dist_entropy = self.act_com.evaluate_actions(communication_features,
-                                                                   action[:,2:], available_actions,
-                                                                   active_masks=
-                                                                   active_masks if self._use_policy_active_masks
-                                                                   else None)
-        action_log_probs = torch.cat((control_log_probs, communication_log_probs), dim=1)
+                                                                action[:,2:], available_actions,
+                                                                active_masks=
+                                                                active_masks if self._use_policy_active_masks
+                                                                else None)
+
+        action_log_probs = torch.cat((control_log_probs, communication_log_probs), dim=-1)
         dist_entropy = control_dist_entropy + communication_dist_entropy
 
         return action_log_probs, dist_entropy

@@ -33,7 +33,8 @@ class Runner(object):
         self.n_rollout_threads = self.all_args.n_rollout_threads
         self.n_eval_rollout_threads = self.all_args.n_eval_rollout_threads
         self.use_linear_lr_decay = self.all_args.use_linear_lr_decay
-        self.hidden_size = self.all_args.hidden_size
+        self.actor_hidden_size = self.all_args.actor_hidden_size
+        self.critic_hidden_size = self.all_args.critic_hidden_size
         self.use_wandb = self.all_args.use_wandb
         self.use_render = self.all_args.use_render
         self.recurrent_N = self.all_args.recurrent_N
@@ -91,7 +92,7 @@ class Runner(object):
             # algorithm
             tr = TrainAlgo(self.all_args, self.policy[agent_id], device = self.device)
             # buffer
-            share_observation_space = self.envs.share_observation_space[agent_id] if self.use_centralized_V else self.envs.observation_space('agent_0')
+            share_observation_space = self.envs.share_observation_space if self.use_centralized_V else self.envs.observation_space('agent_0')
             bu = SeparatedReplayBuffer(self.all_args,
                                        self.envs.observation_space('agent_0'),
                                        share_observation_space,
@@ -135,6 +136,7 @@ class Runner(object):
         for agent_id in range(self.num_agents):
             policy_actor = self.trainer[agent_id].policy.actor
             torch.save(policy_actor.state_dict(), str(self.save_dir) + "/actor_agent" + str(agent_id) + ".pt")
+            torch.save(self.trainer[0].policy.init_dict, str(self.save_dir) + "/init.pt")
             policy_critic = self.trainer[agent_id].policy.critic
             torch.save(policy_critic.state_dict(), str(self.save_dir) + "/critic_agent" + str(agent_id) + ".pt")
             if self.trainer[agent_id]._use_valuenorm:
@@ -152,13 +154,12 @@ class Runner(object):
                 self.trainer[agent_id].value_normalizer.load_state_dict(policy_vnrom_state_dict)
 
     def log_train(self, train_infos, total_num_steps): 
+        infos = {k:{} for k in train_infos[0].keys()}
         for agent_id in range(self.num_agents):
             for k, v in train_infos[agent_id].items():
-                agent_k = "agent%i/" % agent_id + k
-                if self.use_wandb:
-                    wandb.log({agent_k: v}, step=total_num_steps)
-                else:
-                    self.writter.add_scalars(agent_k, {agent_k: v}, total_num_steps)
+                infos[k][str(agent_id)] = v
+        for k in infos.keys():
+            self.writter.add_scalars(k, infos[k], total_num_steps)
 
     def log_env(self, env_infos, total_num_steps):
         for k, v in env_infos.items():
