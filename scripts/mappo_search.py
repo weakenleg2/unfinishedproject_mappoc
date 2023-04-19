@@ -22,7 +22,7 @@ def stopper(trial_id, result):
        iterations_since_best[key] = 0
       
     improvement_threshold = 0.1
-    patience = 1e6
+    patience = 100 
 
     if result["average_episode_rewards"] > best_rewards[key]+ improvement_threshold:
         best_rewards[key] = result["average_episode_rewards"]
