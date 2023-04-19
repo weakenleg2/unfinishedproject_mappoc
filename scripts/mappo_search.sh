@@ -3,7 +3,7 @@
 #SBATCH -M snowy
 #SBATCH -p node 
 #SBATCH -n 1
-#SBATCH -t 24:00:00
+#SBATCH -t 48:00:00
 #SBATCH -J "mappo_search"
 #SBATCH -o /home/pagliaro/project/RAC/outs/%j.out
 
