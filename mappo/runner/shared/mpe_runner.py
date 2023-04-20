@@ -101,7 +101,7 @@ class MPERunner(Runner):
                     env_infos[agent_k] = idv_rews
 
                 self.log_env(env_infos, total_num_steps)
-            train_infos["average_episode_rewards"] = np.mean(self.buffer.rewards) * self.episode_length
+            train_infos["average_episode_rewards"] = np.mean(self.buffer.rewards) * self.episode_length / self.n_trajectories
 
             if ray.tune.is_session_enabled():
                 session.report({"average_episode_rewards": train_infos["average_episode_rewards"]})
@@ -118,20 +118,20 @@ class MPERunner(Runner):
       # reset env
       obs = self.envs.reset()
       obs = self.dict_to_tensor(obs)
-      last_actions = np.zeros(
-          (self.n_rollout_threads, self.num_agents, flatdim(self.envs.action_space('agent_0')) - 1))
+      #last_actions = np.zeros(
+          #(self.n_rollout_threads, self.num_agents, flatdim(self.envs.action_space('agent_0')) - 1))
       # replay buffer
       if self.use_centralized_V:
             share_obs = obs.reshape(self.n_rollout_threads, -1)
             share_obs = np.expand_dims(share_obs, 1).repeat(
                 self.num_agents, axis=1)
-            last_actions = last_actions.reshape(self.n_rollout_threads, -1)
-            last_actions = np.expand_dims(last_actions, 1).repeat(
-                self.num_agents, axis=1)
+            #last_actions = last_actions.reshape(self.n_rollout_threads, -1)
+            #last_actions = np.expand_dims(last_actions, 1).repeat(
+                #self.num_agents, axis=1)
       else:
             share_obs = obs
 
-      share_obs = np.concatenate([share_obs, last_actions], -1)
+      #share_obs = np.concatenate([share_obs, last_actions], -1)
 
       self.buffer.share_obs[0] = share_obs.copy()
       self.buffer.obs[0] = obs.copy()
@@ -197,9 +197,9 @@ class MPERunner(Runner):
     
     if self.use_centralized_V:
         share_obs = obs.reshape(self.n_rollout_threads, -1)
-        last_actions = actions.reshape(self.n_rollout_threads, -1)
-        last_actions = last_actions.reshape(self.n_rollout_threads, -1)
-        share_obs = np.concatenate([share_obs, last_actions], -1)
+        #last_actions = actions.reshape(self.n_rollout_threads, -1)
+        #last_actions = last_actions.reshape(self.n_rollout_threads, -1)
+        #share_obs = np.concatenate([share_obs, last_actions], -1)
         share_obs = np.expand_dims(share_obs, 1).repeat(
             self.num_agents, axis=1)
     else:

@@ -123,8 +123,8 @@ if __name__ == '__main__':
       next_obs = preprocess_obs(next_obs)
       obs = next_obs
       rewards = dict_to_tensor(rewards)
-      print(rewards)
-      #print(actions)
+      #print(rewards)
+      print(actions)
       env.render()
       time.sleep(0.03)
       seed_reward = seed_reward + rewards.squeeze().numpy()

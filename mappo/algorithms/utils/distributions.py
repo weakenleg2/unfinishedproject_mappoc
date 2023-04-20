@@ -66,10 +66,15 @@ class FixedBeta(Beta):
         epsilon = 1e-6
         clipped_actions = torch.clamp(actions, self.low + epsilon, self.high - epsilon)
         scaled_actions = (clipped_actions - self.low) / (self.high - self.low)
-        return super().log_prob(scaled_actions)
+
+        clipped_scaled_actions = torch.clamp(scaled_actions, epsilon, 1 - epsilon)
+        return super().log_prob(clipped_scaled_actions)
 
     def entropy(self):
-        return super().entropy().sum(-1)
+        entropy_values = super().entropy()
+        summed_entropy = entropy_values.sum(-1)
+        print(summed_entropy)
+        return summed_entropy
 
     def mode(self):
         return self.low + self.mean * (self.high - self.low)
@@ -99,18 +104,12 @@ class DiagGaussian(nn.Module):
             return init(m, init_method, lambda x: nn.init.constant_(x, 0), gain)
 
         self.fc_mean = init_(nn.Linear(num_inputs, num_outputs))
-        self.logstd = AddBias(torch.zeros(num_outputs))
-        #self.logstd = init_(nn.Linear(num_inputs, num_outputs))
+        self.logstd = init_(nn.Linear(num_inputs, num_outputs))
+        #self.logstd = AddBias(torch.zeros(num_outputs))
 
-    def forward(self, x, availanle_actions=None):
+    def forward(self, x, available_actions=None):
         action_mean = self.fc_mean(x)
-
-        #  An ugly hack for my KFAC implementation.
-        zeros = torch.zeros(action_mean.size())
-        if x.is_cuda:
-            zeros = zeros.cuda()
-        action_logstd = self.logstd(zeros)
-
+        action_logstd = torch.clamp(self.logstd(x), min=-6, max=2)
         return FixedNormal(action_mean, action_logstd.exp())
 
 class DiagBeta(DiagGaussian):
@@ -120,6 +119,7 @@ class DiagBeta(DiagGaussian):
         self.high = high
 
     def forward(self, x, available_actions=None):
+
         action_alpha = torch.exp(self.fc_mean(x))
 
         zeros = torch.zeros(action_alpha.size())
@@ -127,6 +127,7 @@ class DiagBeta(DiagGaussian):
             zeros = zeros.cuda()
 
         action_beta = torch.exp(self.logstd(zeros))
+
         return FixedBeta(action_alpha, action_beta, self.low, self.high)
 
 class Bernoulli(nn.Module):

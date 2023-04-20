@@ -60,6 +60,7 @@ def parse_args(args, parser):
 def main(args):
     parser = get_config()
     all_args = parse_args(args, parser)
+    all_args.episode_length *= all_args.n_trajectories
     torch.autograd.set_detect_anomaly(True, check_nan=True)
 
     if all_args.algorithm_name == "rmappo":
@@ -170,6 +171,7 @@ def main(args):
 def simple_train(args):
     parser = get_config()
     all_args = parse_args("", parser)
+    all_args.episode_length *= all_args.n_trajectories
     
     for key in args:
         setattr(all_args, key, args[key])

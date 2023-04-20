@@ -109,7 +109,8 @@ class SimpleEnv(AECEnv):
         self.state_space = spaces.Box(
             low=-np.float32(np.inf),
             high=+np.float32(np.inf),
-            shape=(state_dim + (space_dim - 1) * len(self.world.agents),),
+            #shape=(state_dim + (space_dim - 1) * len(self.world.agents),),
+            shape=(state_dim,),
             dtype=np.float32,
         )
 

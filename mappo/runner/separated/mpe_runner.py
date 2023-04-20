@@ -99,9 +99,9 @@ class MPERunner(Runner):
                         #train_infos[agent_id].update(
                             #{'individual_rewards': np.mean(idv_rews)})
                         train_infos[agent_id].update({"average_episode_rewards": np.mean(
-                            self.buffer[agent_id].rewards) * self.episode_length})
+                            self.buffer[agent_id].rewards) * self.episode_length / self.n_trajectories})
                 self.log_train(train_infos, total_num_steps)
-                print('Average_episode_rewards: ', np.mean(self.buffer[0].rewards) * self.episode_length)
+                print('Average_episode_rewards: ', np.mean(self.buffer[0].rewards) * self.episode_length / self.n_trajectories)
 
             # eval
             self.writter.add_scalar('communication_savings', 1 - tot_comms / (self.episode_length * self.num_agents * self.n_rollout_threads), episode)
@@ -113,14 +113,14 @@ class MPERunner(Runner):
         obs = self.envs.reset()
         obs = self.dict_to_tensor(obs)
 
-        last_actions = np.zeros(
-          (self.n_rollout_threads, self.num_agents * (flatdim(self.envs.action_space('agent_0')) - 1)))
+        #last_actions = np.zeros(
+          #(self.n_rollout_threads, self.num_agents * (flatdim(self.envs.action_space('agent_0')) - 1)))
 
         share_obs = []
         for o in obs:
             share_obs.append(list(chain(*o)))
         share_obs = np.array(share_obs)
-        share_obs = np.concatenate([share_obs, last_actions], -1)
+        #share_obs = np.concatenate([share_obs, last_actions], -1)
 
         for agent_id in range(self.num_agents):
             if not self.use_centralized_V:
@@ -164,8 +164,7 @@ class MPERunner(Runner):
                 action_env = np.squeeze(
                     np.eye(action_space.n)[action], 1)
             else:
-                action_env = action
-                action = np.clip(action, -1, 1)
+                action_env = np.clip(action, -1, 1)
             
             actions.append(action)
             temp_actions_env.append(action_env)
@@ -200,12 +199,12 @@ class MPERunner(Runner):
         masks[dones == True] = np.zeros(
             ((dones == True).sum(), 1), dtype=np.float32)
 
-        merged_actions = actions.reshape(self.n_rollout_threads, self.num_agents * (flatdim(self.envs.action_space('agent_0')) - 1))
+        #merged_actions = actions.reshape(self.n_rollout_threads, self.num_agents * (flatdim(self.envs.action_space('agent_0')) - 1))
         share_obs = []
         for o in obs:
             share_obs.append(list(chain(*o)))
         share_obs = np.array(share_obs)
-        share_obs = np.concatenate([share_obs, merged_actions], -1)
+        #share_obs = np.concatenate([share_obs, merged_actions], -1)
 
         for agent_id in range(self.num_agents):
             if not self.use_centralized_V:

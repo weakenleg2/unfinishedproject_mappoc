@@ -214,23 +214,30 @@ class Scenario(BaseScenario):
         # get positions of all entities in this agent's reference frame
         entity_pos = []
         for entity in world.landmarks:  # world.entities:
-            entity_pos.append(entity.state.p_pos - agent.state.p_pos)
+            entity_pos.append(entity.state.p_pos)
         # communication of all other agents
+        entity_pos = np.concatenate(entity_pos)
         comm = []
-        other_pos = []
         for other in world.agents:
+            com_flag = 0
             if other is agent:
                 continue
-            message = self.last_message[other.name]
-            if self.last_message[other.name] is None:
-                message = np.zeros(world.dim_p)
-                
-            comm.append(message - agent.state.p_pos)
 
-        #Skip sending other agent's position
-        #other_pos.append(other.state.p_pos - agent.state.p_pos)
+            message = self.last_message[other.name]
+            if other.action.c is not None and other.action.c[0] > other.action.c[1]:
+                com_flag = 1
+
+            if self.last_message[other.name] is None:
+                message = np.zeros(world.dim_p + 1)
+            else:
+                message = np.concatenate((message, [com_flag]))
+
+            
+            comm.append(message)
+
+        comm = np.concatenate(comm)
         obs = np.concatenate(
-            [agent.state.p_pos] + [agent.state.p_vel] +
-            entity_pos + other_pos + comm)
+            (agent.state.p_pos, agent.state.p_vel,
+            entity_pos, comm))
 
         return obs

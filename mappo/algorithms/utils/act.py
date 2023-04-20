@@ -22,7 +22,7 @@ class ACTLayer(nn.Module):
             self.action_out = Categorical(inputs_dim, action_dim, use_orthogonal, gain)
         elif action_space.__class__.__name__ == "Box":
             action_dim = action_space.shape[0]
-            self.action_out = DiagBeta(inputs_dim, action_dim, action_space.low[0], action_space.high[0], use_orthogonal, gain)
+            self.action_out = DiagGaussian(inputs_dim, action_dim, use_orthogonal, gain)
         elif action_space.__class__.__name__ == "MultiBinary":
             action_dim = action_space.shape[0]
             self.action_out = Bernoulli(inputs_dim, action_dim, use_orthogonal, gain)
@@ -82,7 +82,6 @@ class ACTLayer(nn.Module):
             actions = action_logits.mode() if deterministic else action_logits.sample() 
 
             action_log_probs = action_logits.log_probs(actions)
-
             #if self.action_space.__class__.__name__ == "Box":
                 #actions = torch.clamp(actions, self.action_space.low[0], self.action_space.high[0])
         
@@ -140,7 +139,7 @@ class ACTLayer(nn.Module):
                     dist_entropy.append(action_logit.entropy().mean())
                 
             action_log_probs = torch.sum(torch.cat(action_log_probs, -1), -1, keepdim=True)
-            dist_entropy = dist_entropy[0] / 2.0 + dist_entropy[1] / 0.98 #! dosen't make sense
+            dist_entropy = dist_entropy[0] + dist_entropy[1]
 
         elif self.multi_discrete:
             action = torch.transpose(action, 0, 1)
