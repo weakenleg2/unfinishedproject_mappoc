@@ -47,6 +47,7 @@ if __name__ == '__main__':
       "algorithm_name": tune.choice(["mappo", 'rmappo']),
       "pop_art": tune.choice([True, False]),
       "use_ReLU": tune.choice([True, False]),
+      "episode_length": 25,
       "env_name": "MPE",
       "scenario_name": "simple_spread",
       "experiment_name": "mappo_search_" + str(args.num_agents) + "_agents" + ("_full_com" if args.full_com else "_limited_com"),
@@ -63,7 +64,6 @@ if __name__ == '__main__':
       "full_comm": args.full_com,
   }
   pb2_config = {
-      "episode_length": [25, 100],
       "n_trajectories": [1, 5000],
       "actor_hidden_size": [32, 2048],
       "critic_hidden_size": [32, 2048],
