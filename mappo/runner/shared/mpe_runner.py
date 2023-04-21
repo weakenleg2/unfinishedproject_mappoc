@@ -101,7 +101,7 @@ class MPERunner(Runner):
                     env_infos[agent_k] = idv_rews
 
                 self.log_env(env_infos, total_num_steps)
-            train_infos["average_episode_rewards"] = np.mean(self.buffer.rewards) * self.episode_length / self.n_trajectories
+            train_infos["average_episode_rewards"] = np.mean(self.buffer.rewards) * 25
 
             if ray.tune.is_session_enabled():
                 session.report({"average_episode_rewards": train_infos["average_episode_rewards"]})
