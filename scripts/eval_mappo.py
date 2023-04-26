@@ -79,12 +79,13 @@ if __name__ == '__main__':
                                       N=args.n_agents,
                                       local_ratio = 0.5, 
                                       max_cycles=25, 
-                                      full_comm = False,
+                                      full_comm = True,
                                       continuous_actions=True,
                                       render_mode = 'human')
 
   if not args.random_actions:
     init_dict = torch.load(args.filename + '/init.pt')
+    print(init_dict)
     actor_files = [f for f in os.listdir(args.filename) if f.startswith('actor_agent') and f.endswith('.pt')]
 
     if len(actor_files) == 0 and os.path.isfile(os.path.join(args.filename, 'actor.pt')):
@@ -107,8 +108,8 @@ if __name__ == '__main__':
     obs = env.reset()
     obs = preprocess_obs(obs)
 
-    np.random.seed(s)
-    torch.manual_seed(s)
+    #np.random.seed(s)
+    #torch.manual_seed(s)
     while env.agents:
       if args.random_actions:
         actions = {}
@@ -124,7 +125,7 @@ if __name__ == '__main__':
       obs = next_obs
       rewards = dict_to_tensor(rewards)
       #print(rewards)
-      print(actions)
+      #print(actions)
       env.render()
       time.sleep(0.03)
       seed_reward = seed_reward + rewards.squeeze().numpy()

@@ -101,7 +101,7 @@ class MPERunner(Runner):
                         train_infos[agent_id].update({"average_episode_rewards": np.mean(
                             self.buffer[agent_id].rewards) * 25})
                 self.log_train(train_infos, total_num_steps)
-                print('Average_episode_rewards: ', np.mean(self.buffer[0].rewards))
+                print('Average_episode_rewards: ', np.mean(self.buffer[0].rewards) * 25)
 
             # eval
             self.writter.add_scalar('communication_savings', 1 - tot_comms / (self.episode_length * self.num_agents * self.n_rollout_threads), episode)

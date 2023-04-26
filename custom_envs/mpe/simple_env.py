@@ -273,6 +273,7 @@ class SimpleEnv(AECEnv):
 
     def draw(self):
         # clear screen
+        pygame.event.get()
         self.screen.fill((255, 255, 255))
 
         # update bounds to center around agent
@@ -333,4 +334,5 @@ class SimpleEnv(AECEnv):
         if self.renderOn:
             pygame.event.pump()
             pygame.display.quit()
+            pygame.quit()
             self.renderOn = False
