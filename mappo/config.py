@@ -183,7 +183,7 @@ def get_config():
     parser.add_argument("--use_obs_instead_of_state", action='store_true',
                         default=False, help="Whether to use global state or concatenated obs")
     parser.add_argument("--full_comm", action='store_true', help="if agents have full communication")
-    parser.add_argument("--comm_penalty", type=float, default=0.01, help="Penalty for communication (will be negated)")
+    parser.add_argument("--com_ratio", type=float, default=0.5, help="Ratio for agent communication penalty")
     parser.add_argument("--local_ratio", type=float, default=0.5, help="Ratio for agent rewards")
 
     # replay buffer parameters

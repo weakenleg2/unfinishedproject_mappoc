@@ -56,6 +56,7 @@ if __name__ == '__main__':
   parser.add_argument('filename', type=str)
   parser.add_argument('-n', '--n_agents', type=int, default=3)
   parser.add_argument('-r', '--random_actions', action='store_true')
+  parser.add_argument('-f', '--full_com', action='store_true')
   args = parser.parse_args()
 
   if not hasattr(args, 'hidden_size'):
@@ -79,7 +80,7 @@ if __name__ == '__main__':
                                       N=args.n_agents,
                                       local_ratio = 0.5, 
                                       max_cycles=25, 
-                                      full_comm = True,
+                                      full_comm = full_com,
                                       continuous_actions=True,
                                       render_mode = 'human')
 
