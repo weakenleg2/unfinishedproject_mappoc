@@ -123,7 +123,7 @@ class RA_MADDPG(object):
 
       std = self.variance ** 0.5
 
-      obs = (obs - self.obs_mean) / (std + 1e-8)
+      obs = (obs - self.obs_mean) / (std + 1e-6)
       obs = np.clip(obs, -10, 10)
       obs = torch.tensor(obs, dtype=torch.float32)
       return obs

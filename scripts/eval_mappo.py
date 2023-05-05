@@ -80,7 +80,7 @@ if __name__ == '__main__':
                                       N=args.n_agents,
                                       local_ratio = 0.5, 
                                       max_cycles=25, 
-                                      full_comm = full_com,
+                                      full_comm = args.full_com,
                                       continuous_actions=True,
                                       render_mode = 'human')
 
@@ -102,7 +102,7 @@ if __name__ == '__main__':
     rnn_state = torch.zeros(args.n_agents, init_dict.recurrent_N, init_dict.actor_hidden_size * 2) 
 
   tot_reward = 0
-  seeds = range(5)
+  seeds = range(10)
 
   for s in seeds:
     seed_reward = np.zeros(args.n_agents)
