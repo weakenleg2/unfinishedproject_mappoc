@@ -121,7 +121,7 @@ def parse_args():
 
   parser.add_argument('--model_path', type=str, default="models/")
   parser.add_argument('--figure_path', type=str, default="figures/")
-  parser.add_argument('--n_episodes', type=int, default=10000000)
+  parser.add_argument('--n_episodes', type=int, default=4000000)
   parser.add_argument('--eval_episodes', type=int, default=5)
   parser.add_argument('--eval_interval', type=int, default=100)
   parser.add_argument('--save_interval', type=int, default=1000)
@@ -209,7 +209,7 @@ if __name__ == '__main__':
     writer.add_scalar('agent/comm_savings', comm_savings, i)
 
     if i % args.eval_interval == 0:
-      print(f'Episode: {i}, best performance: {best}')
+      print(f'Episode: {i}/{args.n_episodes}, best performance: {best}')
       eval_reward, eval_comm = eval(
           env, algo, replay_buffer, args.eval_episodes, writer)
       writer.add_scalar('agent/eval_reward', eval_reward, eval_counter)
