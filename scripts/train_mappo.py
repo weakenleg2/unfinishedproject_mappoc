@@ -8,9 +8,9 @@ import numpy as np
 from pathlib import Path
 import torch
 from custom_envs.mpe import simple_spread_c_v2 
-from mappo.config import get_config
-from mappo.envs.mpe.MPE_env import MPEEnv
-from mappo.envs.env_wrappers import SubprocVecEnv, DummyVecEnv
+from algorithms.mappo.config import get_config
+from algorithms.mappo.envs.mpe.MPE_env import MPEEnv
+from algorithms.mappo.envs.env_wrappers import SubprocVecEnv, DummyVecEnv
 
 """Train script for MPEs."""
 
@@ -150,9 +150,9 @@ def main(args):
 
     # run experiments
     if all_args.share_policy:
-        from mappo.runner.shared.mpe_runner import MPERunner as Runner
+        from algorithms.mappo.runner.shared.mpe_runner import MPERunner as Runner
     else:
-        from mappo.runner.separated.mpe_runner import MPERunner as Runner
+        from algorithms.mappo.runner.separated.mpe_runner import MPERunner as Runner
 
     runner = Runner(config)
     runner.run()
@@ -254,9 +254,9 @@ def simple_train(args):
 
     # run experiments
     if all_args.share_policy:
-        from mappo.runner.shared.mpe_runner import MPERunner as Runner
+        from algorithms.mappo.runner.shared.mpe_runner import MPERunner as Runner
     else:
-        from mappo.runner.separated.mpe_runner import MPERunner as Runner
+        from algorithms.mappo.runner.separated.mpe_runner import MPERunner as Runner
 
     runner = Runner(config)
     runner.run()

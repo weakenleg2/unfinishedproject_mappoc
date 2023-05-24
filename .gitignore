@@ -1,13 +1,18 @@
 #added
-memes/
 core*
 outs/
+gifs/
+processed_data/
+maddpg_validation/
+all_runs/
 ma-gym/
 models/
 runs/
 figures/
 results*
 *.pt
+*.zip
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

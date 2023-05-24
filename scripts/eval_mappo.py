@@ -1,17 +1,12 @@
 import os
-import time
+import imageio
 import argparse
-import gym
 from custom_envs.mpe import simple_spread_c_v2
 import numpy as np
 import torch
-from mappo.algorithms.r_mappo.algorithm.r_actor_critic import R_Actor
-from algorithms.resource_aware_maddpg import RA_MADDPG
+from algorithms.mappo.algorithms.r_mappo.algorithm.r_actor_critic import R_Actor
 
-def l2t(x):
-  return x
-
-def dict_to_tensor(d, unsqueeze_axis=0):
+def dict_to_tensor(d):
   d = list(d.values())
   d = np.array(d)
   d = torch.tensor(d)
@@ -19,8 +14,6 @@ def dict_to_tensor(d, unsqueeze_axis=0):
 
 def preprocess_obs(obs):
   obs = dict_to_tensor(obs)
-  #obs = obs - obs.mean()
-  # obs = obs / (obs.std() + 1e-8)
   return obs
 
 def get_logits(obs, policies, rnn_state):
@@ -45,15 +38,13 @@ def get_actions(obs, env, rnn_state, policies, training=False):
 
   logits = np.clip(logits, -1, 1)
   for i, agent in enumerate(env.possible_agents):
-    #actions[agent] = torch.tensor([-1, 1, 0])
     actions[agent] = logits[i]
 
   return actions, logits, rnn_state
 
 if __name__ == '__main__':
-
   parser = argparse.ArgumentParser()
-  parser.add_argument('filename', type=str)
+  parser.add_argument('filename', descriptio='Path to folder containing actor.pt files', ntype=str)
   parser.add_argument('-n', '--n_agents', type=int, default=3)
   parser.add_argument('-r', '--random_actions', action='store_true')
   parser.add_argument('-f', '--full_com', action='store_true')
@@ -82,7 +73,7 @@ if __name__ == '__main__':
                                       max_cycles=25, 
                                       full_comm = args.full_com,
                                       continuous_actions=True,
-                                      render_mode = 'human')
+                                      render_mode = 'rgb_array')
 
   if not args.random_actions:
     init_dict = torch.load(args.filename + '/init.pt')
@@ -102,15 +93,18 @@ if __name__ == '__main__':
     rnn_state = torch.zeros(args.n_agents, init_dict.recurrent_N, init_dict.actor_hidden_size * 2) 
 
   tot_reward = 0
-  seeds = range(10)
+  seeds = range(3)
 
+  frames = []
   for s in seeds:
+    s = s + 15
+    np.random.seed(s)
+    torch.manual_seed(s)
+
     seed_reward = np.zeros(args.n_agents)
     obs = env.reset()
     obs = preprocess_obs(obs)
 
-    #np.random.seed(s)
-    #torch.manual_seed(s)
     while env.agents:
       if args.random_actions:
         actions = {}
@@ -125,12 +119,17 @@ if __name__ == '__main__':
       next_obs = preprocess_obs(next_obs)
       obs = next_obs
       rewards = dict_to_tensor(rewards)
-      #print(rewards)
-      #print(actions)
-      env.render()
-      time.sleep(0.03)
       seed_reward = seed_reward + rewards.squeeze().numpy()
+
+      image = env.render()
+      frames.append(image)
+
     tot_reward += seed_reward.mean()
 
   print(tot_reward / len(seeds))
+  writer = imageio.get_writer('gifs' + '/render.mp4', fps=24)
+
+  for frame in frames:
+    writer.append_data(frame)
+  writer.close()
   env.close()
