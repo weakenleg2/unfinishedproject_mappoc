@@ -3,16 +3,35 @@ import argparse
 import torch
 import numpy as np
 from custom_envs.mpe import simple_spread_c_v2
+from pathlib import Path
 from gymnasium.spaces.utils import flatdim
 from matplotlib import pyplot as plt
 from algorithms.resource_aware_maddpg import RA_MADDPG
 from utils.buffer import ReplayBuffer
 from torch.utils.tensorboard import SummaryWriter
 
-USE_CUDA = False
-
+USE_CUDA = torch.cuda.is_available()
 device = torch.device("cuda" if USE_CUDA else "cpu")
 update_counter = 0
+
+def create_run_dir(experiment_name):
+  run_dir = Path(os.path.split(os.path.dirname(os.path.abspath(__file__)))[
+                   0] + "/runs") / "maddpg" / experiment_name
+  if not run_dir.exists():
+    os.makedirs(str(run_dir))
+    curr_run = 'run1'
+  exst_run_nums = [int(str(folder.name).split('run')[1]) for folder in run_dir.iterdir() if str(folder.name).startswith('run')]
+  if len(exst_run_nums) == 0:
+    curr_run = 'run1'
+  else:
+    curr_run = 'run%i' % (max(exst_run_nums) + 1)
+
+  run_dir = run_dir / curr_run
+  if not run_dir.exists():
+      os.makedirs(str(run_dir))
+      os.makedirs(str(run_dir) + '/models')
+
+  return str(run_dir)
 
 def dict_to_tensor(d, unsqueeze_axis=0):
   d = list(d.values())
@@ -22,20 +41,14 @@ def dict_to_tensor(d, unsqueeze_axis=0):
 
 def preprocess_obs(obs):
   obs = dict_to_tensor(obs)
-  # obs = torch.log(obs + 1e-4)
-  # obs = obs - obs.mean()
-  # obs = obs / (obs.std() + 1e-8)
   return obs
 
 
-def get_actions(obs, env, agents, full_comm=False, training=True):
+def get_actions(obs, env, agents, training=True):
   actions = {}
   logits = agents.step(obs, training)
   for i, agent in enumerate(env.possible_agents):
     actions[agent] = logits[i]
-    if full_comm:
-      actions[agent][-2] = 1
-      actions[agent][-1] = 0
 
   return actions, logits
 
@@ -52,7 +65,7 @@ def run_episode(env, agents, replay_buffer, args, training=True):
 
     while env.agents:
       actions, logits = get_actions(obs.to(device), env, agents,
-                                    full_comm=args.full_comm, training=training)
+                                    training=training)
       next_obs, rewards, dones, _, infos = env.step(actions)
 
       next_obs = preprocess_obs(next_obs)
@@ -104,24 +117,24 @@ def parse_args():
 
   parser.add_argument('--model_path', type=str, default="models/")
   parser.add_argument('--figure_path', type=str, default="figures/")
-  parser.add_argument('--n_episodes', type=int, default=50000)
-  parser.add_argument('--eval_episodes', type=int, default=10)
+  parser.add_argument('--n_episodes', type=int, default=4000000)
+  parser.add_argument('--eval_episodes', type=int, default=5)
   parser.add_argument('--eval_interval', type=int, default=100)
   parser.add_argument('--save_interval', type=int, default=1000)
   parser.add_argument('--full_comm', action='store_true')
   parser.add_argument('--experiment_name', type=str, default="default")
 
   #Agent config
-  parser.add_argument('--lr', type=float, default=1e-2)
+  parser.add_argument('--lr', type=float, default=1e-5)
   parser.add_argument('--tau', type=float, default=5e-2)
   parser.add_argument('-e', '--epsilon', type=float, default=1)
   parser.add_argument('--epsilon_decay', type=float, default=1e6)
-  parser.add_argument('--gamma', type=float, default=0.975)
-  parser.add_argument('--actor_hidden_dim', type=int, default=64)
-  parser.add_argument('--critic_hidden_dim', type=int, default=128)
+  parser.add_argument('--gamma', type=float, default=0.95)
+  parser.add_argument('--actor_hidden_dim', type=int, default=256)
+  parser.add_argument('--critic_hidden_dim', type=int, default=256)
 
-  parser.add_argument('--batch_size', type=int, default=64)
-  parser.add_argument('--update_interval', type=int, default=100)
+  parser.add_argument('--batch_size', type=int, default=128)
+  parser.add_argument('--update_interval', type=int, default=4000)
 
   return parser.parse_args()
 
@@ -148,7 +161,8 @@ if __name__ == '__main__':
   args = parse_args()
   n_agents = args.n_agents
   global writer
-  writer = SummaryWriter('runs/maddpg/' + args.experiment_name +'/' + args.run_name)
+  run_dir = create_run_dir(args.experiment_name)
+  writer = SummaryWriter(run_dir + '/logs')
 
   if not os.path.exists(args.model_path):
     os.makedirs(args.model_path)
@@ -156,8 +170,8 @@ if __name__ == '__main__':
   if not os.path.exists(args.figure_path):
     os.makedirs(args.figure_path)
 
-  env = simple_spread_c_v2.parallel_env(N=n_agents, communication_penalty=-0.1,
-                                        local_ratio=0.5, max_cycles=40, continuous_actions=True)
+  env = simple_spread_c_v2.parallel_env(N=n_agents, penalty_ratio=0.01, full_comm = args.full_comm,
+                                        local_ratio=0.5, max_cycles=25, continuous_actions=True)
 
   obs_dim = env.observation_space('agent_0').shape[0]
   action_dim = flatdim(env.action_space('agent_0'))
@@ -191,18 +205,17 @@ if __name__ == '__main__':
     writer.add_scalar('agent/comm_savings', comm_savings, i)
 
     if i % args.eval_interval == 0:
+      print(f'Episode: {i}/{args.n_episodes}, best performance: {best}')
       eval_reward, eval_comm = eval(
           env, algo, replay_buffer, args.eval_episodes, writer)
       writer.add_scalar('agent/eval_reward', eval_reward, eval_counter)
       writer.add_scalar('agent/eval_comm_savings', eval_comm, eval_counter)
       eval_counter += 1
 
-      if args.save and eval_reward >= best:
-        algo.save(args.model_path + 'best.pt')
+      if eval_reward >= best:
         best = eval_reward
-
-    if args.save and i % args.save_interval == 0:
-      algo.save(args.model_path + str(i) + '.pt')
+        if args.save:
+          algo.save(run_dir + '/models/best.pt')
 
   writer.close()
   env.close()

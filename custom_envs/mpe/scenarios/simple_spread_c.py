@@ -64,7 +64,7 @@ class raw_env(SimpleEnv, EzPickle):
     def __init__(
         self,
         N=3,
-        communication_penalty=-0.01,
+        penalty_ratio = 0.5,
         full_comm=True,
         local_ratio=0.5,
         max_cycles=25,
@@ -72,7 +72,7 @@ class raw_env(SimpleEnv, EzPickle):
         render_mode=None,
     ):
         EzPickle.__init__(
-            self, N=N, communication_penalty=communication_penalty,  
+            self, N=N, penalty_ratio=penalty_ratio,  
             local_ratio=local_ratio, full_comm=full_comm,
             max_cycles=max_cycles, continuous_actions=continuous_actions, 
             render_mode=render_mode
@@ -81,7 +81,7 @@ class raw_env(SimpleEnv, EzPickle):
             0.0 <= local_ratio <= 1.0
         ), "local_ratio is a proportion. Must be between 0 and 1."
         scenario = Scenario()
-        world = scenario.make_world(N, communication_penalty, full_comm)
+        world = scenario.make_world(N, penalty_ratio, full_comm)
         super().__init__(
             scenario=scenario,
             world=world,
@@ -102,14 +102,15 @@ class Scenario(BaseScenario):
         agent.action.c = np.array([1, 0])
 
       if agent.action.c[0] > agent.action.c[1]:
-        self.last_message[agent.name] = agent.state.p_pos
+        self.last_message[agent.name] = np.concatenate((agent.state.p_pos, [0]))
         agent.color = np.array([0, 1, 0])
       else:
         agent.color = np.array([0.35, 0.35, 0.85])
-
+        self.last_message[agent.name][-1] += 1
+      
       return agent.action
 
-    def make_world(self, N=3, communication_penalty = -0.01, full_comm=False):
+    def make_world(self, N=3, penalty_ratio=0.5, full_comm=False):
         world = World()
         # set any world properties first
         world.dim_c = 2
@@ -118,7 +119,7 @@ class Scenario(BaseScenario):
         self.n_collisions = 0
         world.collaborative = True
         self.full_comm = full_comm
-        self.communication_penalty = communication_penalty
+        self.penalty_ratio = penalty_ratio 
         self.last_message = {}
         self.world_min = -1 - (0.1 * num_agents)
         self.world_max = 1 + (0.1 * num_agents)
@@ -131,7 +132,7 @@ class Scenario(BaseScenario):
             agent.silent = False
             agent.size = 0.15
             agent.action_callback = self.action_callback
-            self.last_message[agent.name] = None
+            self.last_message[agent.name] = np.zeros(world.dim_p + 1)
         # add landmarks
         world.landmarks = [Landmark() for i in range(num_landmarks)]
         for i, landmark in enumerate(world.landmarks):
@@ -145,7 +146,7 @@ class Scenario(BaseScenario):
         self.n_collisions = 0
         for _, agent in enumerate(world.agents):
             agent.color = np.array([0.35, 0.35, 0.85])
-            self.last_message[agent.name] = None
+            self.last_message[agent.name] = np.zeros(world.dim_p + 1)
         # random properties for landmarks
         for _, landmark in enumerate(world.landmarks):
             landmark.color = np.array([0.25, 0.25, 0.25])
@@ -185,7 +186,7 @@ class Scenario(BaseScenario):
         dist_min = agent1.size + agent2.size
         return dist < dist_min
 
-    def reward(self, agent, world):
+    def reward(self, agent, world, global_reward=None):
         # Agents are rewarded based on minimum agent distance to each landmark, penalized for collisions
         rew = 0
         if agent.collide:
@@ -196,8 +197,10 @@ class Scenario(BaseScenario):
                 if is_collision:
                     self.n_collisions += 1
                 rew -= 1.0 * is_collision
-        if agent.action.c[0] > agent.action.c[1]:
-            rew += self.communication_penalty
+
+        #Add penalty for communication
+        if global_reward and agent.action.c[0] > agent.action.c[1]:
+          rew += global_reward * self.penalty_ratio
         return rew
 
     def global_reward(self, world):
@@ -214,23 +217,30 @@ class Scenario(BaseScenario):
         # get positions of all entities in this agent's reference frame
         entity_pos = []
         for entity in world.landmarks:  # world.entities:
-            entity_pos.append(entity.state.p_pos - agent.state.p_pos)
+            entity_pos.append(entity.state.p_pos)
         # communication of all other agents
+        entity_pos = np.concatenate(entity_pos)
         comm = []
-        other_pos = []
         for other in world.agents:
+            #com_flag = 0
             if other is agent:
                 continue
-            message = self.last_message[other.name]
-            if self.last_message[other.name] is None:
-                message = np.zeros(world.dim_p)
-                
-            comm.append(message - agent.state.p_pos)
 
-        #Skip sending other agent's position
-        #other_pos.append(other.state.p_pos - agent.state.p_pos)
+            message = self.last_message[other.name]
+            #else:
+                #message[-1] += 1
+
+            #self.last_message[other.name] = message
+            
+            #if other.action.c is not None and other.action.c[0] > other.action.c[1]:
+                #self.last_message[other.name] 
+                #com_flag = 1
+
+            comm.append(message)
+
+        comm = np.concatenate(comm)
         obs = np.concatenate(
-            [agent.state.p_pos] + [agent.state.p_vel] +
-            entity_pos + other_pos + comm)
+            (agent.state.p_pos, agent.state.p_vel,
+            entity_pos, comm))
 
         return obs

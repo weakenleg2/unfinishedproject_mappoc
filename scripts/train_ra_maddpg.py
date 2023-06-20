@@ -9,7 +9,8 @@ from utils.buffer import ReplayBuffer
 
 from torch.utils.tensorboard import SummaryWriter
 
-USE_CUDA = False
+USE_CUDA = torch.cuda.is_available()
+device = torch.device("cuda" if USE_CUDA else "cpu")
 
 device = torch.device("cuda" if USE_CUDA else "cpu")
 update_counter = 0
@@ -23,9 +24,6 @@ def dict_to_tensor(d, unsqueeze_axis=0):
 
 def preprocess_obs(obs):
   obs = dict_to_tensor(obs)
-  # obs = torch.log(obs + 1e-4)
-  # obs = obs - obs.mean()
-  # obs = obs / (obs.std() + 1e-8)
   return obs
 
 

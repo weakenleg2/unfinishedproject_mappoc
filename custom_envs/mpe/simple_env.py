@@ -109,7 +109,8 @@ class SimpleEnv(AECEnv):
         self.state_space = spaces.Box(
             low=-np.float32(np.inf),
             high=+np.float32(np.inf),
-            shape=(state_dim + (space_dim - 1) * len(self.world.agents),),
+            #shape=(state_dim + (space_dim - 1) * len(self.world.agents),),
+            shape=(state_dim,),
             dtype=np.float32,
         )
 
@@ -176,7 +177,7 @@ class SimpleEnv(AECEnv):
             global_reward = float(self.scenario.global_reward(self.world))
 
         for agent in self.world.agents:
-            agent_reward = float(self.scenario.reward(agent, self.world))
+            agent_reward = float(self.scenario.reward(agent, self.world, global_reward))
             if self.local_ratio is not None:
                 reward = (
                     global_reward * (1 - self.local_ratio)
@@ -272,6 +273,7 @@ class SimpleEnv(AECEnv):
 
     def draw(self):
         # clear screen
+        pygame.event.get()
         self.screen.fill((255, 255, 255))
 
         # update bounds to center around agent
@@ -332,4 +334,5 @@ class SimpleEnv(AECEnv):
         if self.renderOn:
             pygame.event.pump()
             pygame.display.quit()
+            pygame.quit()
             self.renderOn = False

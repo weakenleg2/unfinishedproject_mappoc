@@ -8,18 +8,17 @@ import numpy as np
 from pathlib import Path
 import torch
 from custom_envs.mpe import simple_spread_c_v2 
-from mappo.config import get_config
-from mappo.envs.mpe.MPE_env import MPEEnv
-from mappo.envs.env_wrappers import SubprocVecEnv, DummyVecEnv
+from algorithms.mappo.config import get_config
+from algorithms.mappo.envs.mpe.MPE_env import MPEEnv
+from algorithms.mappo.envs.env_wrappers import SubprocVecEnv, DummyVecEnv
 
 """Train script for MPEs."""
 
 def make_train_env(all_args):
     def get_env_fn(rank):
         def init_env():
-            env = simple_spread_c_v2.parallel_env(N=all_args.num_agents, communication_penalty=-all_args.comm_penalty,
+            env = simple_spread_c_v2.parallel_env(N=all_args.num_agents, penalty_ratio=all_args.com_ratio,
                 full_comm=all_args.full_comm, local_ratio=all_args.local_ratio, continuous_actions=True)
-            #env.seed(all_args.seed + rank * 1000)
             return env
         return init_env
     if all_args.n_rollout_threads == 1:
@@ -60,6 +59,7 @@ def parse_args(args, parser):
 def main(args):
     parser = get_config()
     all_args = parse_args(args, parser)
+    all_args.episode_length *= all_args.n_trajectories
     torch.autograd.set_detect_anomaly(True, check_nan=True)
 
     if all_args.algorithm_name == "rmappo":
@@ -149,9 +149,9 @@ def main(args):
 
     # run experiments
     if all_args.share_policy:
-        from mappo.runner.shared.mpe_runner import MPERunner as Runner
+        from algorithms.mappo.runner.shared.mpe_runner import MPERunner as Runner
     else:
-        from mappo.runner.separated.mpe_runner import MPERunner as Runner
+        from algorithms.mappo.runner.separated.mpe_runner import MPERunner as Runner
 
     runner = Runner(config)
     runner.run()
@@ -170,6 +170,7 @@ def main(args):
 def simple_train(args):
     parser = get_config()
     all_args = parse_args("", parser)
+    all_args.episode_length *= all_args.n_trajectories
     
     for key in args:
         setattr(all_args, key, args[key])
@@ -179,9 +180,6 @@ def simple_train(args):
     else:
         all_args.use_valuenorm = True
 
-    #print("u are choosing to use mappo, we set use_recurrent_policy & use_naive_recurrent_policy to be False")
-    #all_args.use_recurrent_policy = False 
-    #all_args.use_naive_recurrent_policy = False
     # cuda
     if all_args.cuda and torch.cuda.is_available():
         print("choose to use gpu...")
@@ -252,9 +250,9 @@ def simple_train(args):
 
     # run experiments
     if all_args.share_policy:
-        from mappo.runner.shared.mpe_runner import MPERunner as Runner
+        from algorithms.mappo.runner.shared.mpe_runner import MPERunner as Runner
     else:
-        from mappo.runner.separated.mpe_runner import MPERunner as Runner
+        from algorithms.mappo.runner.separated.mpe_runner import MPERunner as Runner
 
     runner = Runner(config)
     runner.run()

@@ -22,7 +22,6 @@ def get_actions(obs, env, agents, training=False):
   actions = {}
   logits = agents.step(obs, training)
   for i, agent in enumerate(env.possible_agents):
-    #actions[agent] = torch.tensor([-1, 1, 0])
     actions[agent] = logits[i]
 
   return actions, logits
@@ -30,8 +29,9 @@ def get_actions(obs, env, agents, training=False):
 if __name__ == '__main__':
 
   parser = argparse.ArgumentParser()
-  parser.add_argument('filename', type=str)
+  parser.add_argument('filename', description='Path to folder pre-trained model', type=str)
   parser.add_argument('-n', '--n_agents', type=int, default=3)
+  parser.add_argument('-f', '--full_com', action='store_true')
   args = parser.parse_args()
 
   maddpg = RA_MADDPG.init_from_save(args.filename, device='cpu')
@@ -39,7 +39,8 @@ if __name__ == '__main__':
   env = simple_spread_c_v2.parallel_env( 
                                       N=args.n_agents,
                                       local_ratio = 0.5, 
-                                      max_cycles=40, 
+                                      max_cycles=25, 
+                                      full_comm=args.full_com,
                                       continuous_actions=True,
                                       render_mode = 'human')
 
