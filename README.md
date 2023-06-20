@@ -27,16 +27,17 @@ Command line arguments for tweaking hyperparameters can be found in ```mappo/con
 
 
 ## Demo
-### CTDE
-[![Centralized Critic](https://www.youtube.com/vi/wPtRb_eRSyM/maxresdefault.jpg)](https://www.youtube.com/watch?v=wPtRb_eRSyM)
+### Centralized Critic
+[https://www.youtube.com/watch?v=wPtRb_eRSyM](https://www.youtube.com/watch?v=wPtRb_eRSyM)
 
-### IL
-[![Independent Agents](https://www.youtube.com/vi/QUFTfX0G-n0/maxresdefault.jpg)](https://www.youtube.com/watch?v=QUFTfX0G-n0)
+### Independent Agents
+[https://www.youtube.com/watch?v=QUFTfX0G-n0](https://www.youtube.com/watch?v=QUFTfX0G-n0)
 
 ## Credits
 
 The MADDPG and MAPPO implementations are based on the following repositories:
 
 MADDPG: [https://github.com/shariqiqbal2810/maddpg-pytorch](https://github.com/shariqiqbal2810/maddpg-pytorch)
+
 MAPPO: [https://github.com/marlbenchmark/on-policy](https://github.com/marlbenchmark/on-policy)
 
