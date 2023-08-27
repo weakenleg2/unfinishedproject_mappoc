@@ -1,6 +1,6 @@
 import numpy as np
 
-class EntityState:  # physical/external base state of all entities
+class EntityState:  # physical/external base state of all entities实体
     def __init__(self):
         # physical position
         self.p_pos = None
@@ -14,6 +14,8 @@ class AgentState(
         super().__init__()
         # communication utterance
         self.c = None
+        # Inherits from EntityState and adds a communication state c
+        #  to it. This might represent the messages an agent sends/receives.
 
 class Action:  # action of the agent
     def __init__(self):
@@ -210,3 +212,24 @@ class World:  # multi-agent world
         force_a = +force if entity_a.movable else None
         force_b = -force if entity_b.movable else None
         return [force_a, force_b]
+    #     Represents the entire environment or world in which agents and landmarks exist.
+    # Contains lists of agents (agents) and landmarks (landmarks).
+    # Methods to update the state of the world (step), apply agent forces 
+    # (apply_action_force), environmental forces (apply_environment_force), 
+    # and update the state of agents (update_agent_state).
+    # Handles simple collision detection and response (get_collision_force).
+# The World class contains a step method, which is most likely called every time step of the simulation.
+#     During each step, agent actions are applied using the apply_action_force method. 
+# These actions determine how agents move.
+#     Environmental forces, such as collisions between entities, are determined by 
+# the apply_environment_force method.
+#     The physical state of each entity is updated with the integrate_state method.
+#  This method integrates the velocities and positions of each entity over the time step, considering the calculated forces and any speed constraints.
+#     The state of each agent, especially its communication state, is updated using 
+# update_agent_state.
+
+# This setup provides a modular and extensible framework to design multi-agent 
+# environments. By instantiating agents and landmarks, placing them in a World instance, 
+# and then repeatedly calling the step method of World, one can simulate the interactions
+#  between agents in a 2D space. This can be useful for multi-agent reinforcement learning 
+# or other agent-based simulations.

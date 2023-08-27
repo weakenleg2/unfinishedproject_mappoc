@@ -336,3 +336,41 @@ class SimpleEnv(AECEnv):
             pygame.display.quit()
             pygame.quit()
             self.renderOn = False
+#     Utility Functions:
+#         make_env: This function is a utility for wrapping environments with the 
+# order-enforcing wrapper from PettingZoo. The wrapper ensures that agents take their
+#  turns in the proper sequence.
+
+#     SimpleEnv Class:
+#         This is the main environment class and it inherits from AECEnv which stands for
+#  "Agent Environment Cycle" from PettingZoo.
+#         Several variables and utilities specific to the game environment are initialized,
+#  such as the Pygame display, agents, rewards, action, and observation spaces, etc.
+#         Different methods are defined for the class:
+#             observation_space: Returns the observation space for the given agent.
+#             action_space: Returns the action space for the given agent.
+#             seed: Sets the random seed for the environment.
+#             observe: Provides the observation for a given agent.
+#             state: Gives the full state of the environment (concatenating observations 
+# of all agents).
+#             reset: Resets the environment to its initial state.
+#             _execute_world_step: Executes a step in the environment considering the 
+# actions of all agents.
+#             _set_action: Maps the given action to the appropriate format for a given
+#  agent.
+#             step: Allows an agent to take an action in the environment and progresses 
+# the environment state.
+#             enable_render: Enables the rendering of the environment.
+#             render: Renders the environment's current state.
+#             draw: Updates the graphical state of the environment, showing agents and 
+# other entities.
+#             close: Closes the Pygame window if it's opened.
+
+#     Rendering:
+#         The environment uses pygame for rendering. Agents and other entities in the
+#  environment are represented as circles, and their positions and messages are also 
+# displayed.
+
+# From the provided code, the SimpleEnv class is a versatile template for creating
+#  different multi-agent environments by specifying different scenario and world 
+# configurations.

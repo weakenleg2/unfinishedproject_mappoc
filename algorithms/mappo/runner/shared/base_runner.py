@@ -55,6 +55,7 @@ class Runner(object):
         if self.use_wandb:
             self.save_dir = str(wandb.run.dir)
             self.run_dir = str(wandb.run.dir)
+            # self.writter = SummaryWriter(self.log_dir)
         else:
             self.run_dir = config["run_dir"]
             self.log_dir = str(self.run_dir / 'logs')

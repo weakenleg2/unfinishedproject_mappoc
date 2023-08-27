@@ -19,12 +19,32 @@ def make_train_env(all_args):
         def init_env():
             env = simple_spread_c_v2.parallel_env(N=all_args.num_agents, penalty_ratio=all_args.com_ratio,
                 full_comm=all_args.full_comm, local_ratio=all_args.local_ratio, continuous_actions=True)
+            #"--full_comm", action='store_true', help="if agents have full communication"
+            #parser.add_argument("--com_ratio", type=float, default=0.5, help="Ratio for agent communication penalty")
+            # parser.add_argument("--local_ratio", type=float, default=0.5, help="Ratio for agent rewards")
             return env
         return init_env
     if all_args.n_rollout_threads == 1:
+        #By setting up multiple parallel environments, the training process can 
+        # collect experiences from multiple episodes simultaneously, which 
+        # can significantly speed up the data collection process.
         return DummyVecEnv([get_env_fn(0)])
     else:
         return SubprocVecEnv([get_env_fn(i) for i in range(all_args.n_rollout_threads)])
+    # #     If n_rollout_threads is 1:
+    #     DummyVecEnv is used, which is a simple wrapper that doesn't actually 
+    #     parallelize the environment but keeps the same interface as the parallelized 
+    #     version. This is suitable for scenarios where you don't need parallelization, 
+    #     e.g., debugging or when running on a system with limited computational resources.
+    #    If n_rollout_threads is greater than 1:
+    #     SubprocVecEnv is used. This class creates multiple environments in separate
+    #      processes. This allows for true parallelization where each environment runs
+    #      in its own process, and experiences from each environment are collected 
+    #      simultaneously. This is suitable for speeding up training by collecting more 
+    #      data in the same amount of time.
+    # simple_spread_c_v2.parallel_env通过这个构建训练环境，这里只有一个scenario,simple_spread.
+    # 总的来说simple_spread_c.py有三个组成部分，scenario,world and components. world.core.py provide components,
+    # scenario.py sets scenario,simple_env.py provides API like gym.
 
 
 def make_eval_env(all_args):
@@ -46,6 +66,9 @@ def make_eval_env(all_args):
 
 
 def parse_args(args, parser):
+    # This function accepts two parameters: args, 
+    # which is a list of command-line arguments (similar to sys.argv,type in terminal), 
+    # and parser, which is an instance of the argparse.ArgumentParser class.
     parser.add_argument('--scenario_name', type=str,
                         default='simple_spread', help="Which scenario to run on")
     parser.add_argument("--num_landmarks", type=int, default=3)
@@ -53,6 +76,12 @@ def parse_args(args, parser):
                         default=2, help="number of players")
 
     all_args = parser.parse_known_args(args)[0]
+    #     The parse_known_args method of the parser object is used to parse 
+    # the arguments provided in args. It returns two values: the first is a 
+    # namespace containing the parsed arguments, and the second is a list of 
+    # all arguments that were not recognized.
+    # By indexing with [0], the function retrieves only the namespace with 
+    # the recognized arguments.
 
     return all_args
 
@@ -60,12 +89,26 @@ def main(args):
     parser = get_config()
     all_args = parse_args(args, parser)
     all_args.episode_length *= all_args.n_trajectories
+    # refers to the number of episodes or trajectories collected by each parallel 
+    # environment during 
+    # a single sampling operation. 
+    # 长度×个数，或许这是决定minibatch的参数
     torch.autograd.set_detect_anomaly(True, check_nan=True)
+    # The line torch.autograd.set_detect_anomaly(True, check_nan=True) is used to enable the
+    # PyTorch autograd anomaly detection mode. This is mainly for debugging purposes 
+    # to identify operations that result in "Not a Number" (NaN) or "Infinite" (Inf)
+    #  values during the backward pass.
+    # When this mode is turned on, PyTorch will perform extra checks 
+    # at runtime, and if it detects that a NaN or Inf value is being
+    #  produced during gradient calculation, it will throw an error and
+    #  show the stack trace. This can help you pinpoint exactly where the
+    #  problematic operation occurred.
 
     if all_args.algorithm_name == "rmappo":
         print("u are choosing to use rmappo, we set use_recurrent_policy to be True")
         all_args.use_recurrent_policy = True
         all_args.use_naive_recurrent_policy = False
+
     elif all_args.algorithm_name == "mappo":
         print("u are choosing to use mappo, we set use_recurrent_policy & use_naive_recurrent_policy to be False")
         all_args.use_recurrent_policy = False 
@@ -75,6 +118,10 @@ def main(args):
         all_args.use_centralized_V = False
     else:
         raise NotImplementedError
+    # The term "recurrent policy" generally refers to the use of a recurrent neural network (RNN) 
+    # When a policy is "recurrent," it means that the network has memory of past states, 
+    # which can be important in partially observable environments where the current state
+    #  does not contain all the information needed to make optimal decisions.
 
     assert (all_args.share_policy == True and all_args.scenario_name == 'simple_speaker_listener') == False, (
         "The simple_speaker_listener scenario can not use shared policy. Please check the config.py.")
@@ -97,7 +144,16 @@ def main(args):
                    0] + "/runs") / all_args.algorithm_name / all_args.experiment_name
     if not run_dir.exists():
         os.makedirs(str(run_dir))
-
+    # store resultos.path.abspath(__file__) gets the absolute path of the script 
+    # that is being executed.
+    # os.path.dirname() obtains the directory name from this absolute path.
+    # os.path.split() splits this directory name into a head and a tail, where the 
+    # tail is the last part of the path and the head is everything before it.
+    # The [0] then selects the head part, essentially going up one directory level.
+    # This path is then concatenated with "/runs", making a new directory where the 
+    # runs will be stored.
+    # Further subdirectories are then made for the specific algorithm (all_args.algorithm_
+    # name) and the specific experiment (all_args.experiment_name).
     # wandb
     all_args.use_wandb = False
     if all_args.use_wandb:
@@ -124,10 +180,10 @@ def main(args):
         run_dir = run_dir / curr_run
         if not run_dir.exists():
             os.makedirs(str(run_dir))
-
+    # title the process name
     setproctitle.setproctitle(str(all_args.algorithm_name) + "-" + \
         str(all_args.env_name) + "-" + str(all_args.experiment_name) + "@" + str(all_args.user_name))
-
+    
     # seed
     torch.manual_seed(all_args.seed)
     torch.cuda.manual_seed_all(all_args.seed)
@@ -270,3 +326,8 @@ def simple_train(args):
 
 if __name__ == "__main__":
     main(sys.argv[1:])
+# In essence, main is more comprehensive and geared towards being run directly from a
+#  command line, with settings passed in as command-line arguments. simple_train seems 
+# to be a more simplified or specialized version, possibly intended to be used 
+# programmatically within other Python scripts. It is more flexible in terms of input
+#  but skips some of the settings and checks present in main.
