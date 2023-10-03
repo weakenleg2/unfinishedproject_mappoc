@@ -19,6 +19,7 @@ def make_env(raw_env):
     def env(**kwargs):
         env = raw_env(**kwargs)
         env = wrappers.OrderEnforcingWrapper(env)
+        # ensures agents take actions in the correct order
         return env
 
     return env

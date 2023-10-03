@@ -13,6 +13,7 @@ def get_gard_norm(it):
             continue
         sum_grad += x.grad.norm() ** 2
     return math.sqrt(sum_grad)
+# Euclidean norm 
 
 def update_linear_schedule(optimizer, epoch, total_num_epochs, initial_lr):
     """Decreases the learning rate linearly"""
@@ -49,6 +50,7 @@ def get_shape_from_act_space(act_space):
     else:  # agar
         act_shape = act_space[0].shape[0] + 1  
     return act_shape
+# box is more about dimension.
 
 
 def tile_images(img_nhwc):

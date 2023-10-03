@@ -11,6 +11,7 @@ from custom_envs.mpe import simple_spread_c_v2
 from algorithms.mappo.config import get_config
 from algorithms.mappo.envs.mpe.MPE_env import MPEEnv
 from algorithms.mappo.envs.env_wrappers import SubprocVecEnv, DummyVecEnv
+# 记住他用自己搞得环境弄完最后又搞了标准环境！
 
 """Train script for MPEs."""
 
@@ -103,7 +104,7 @@ def main(args):
     #  produced during gradient calculation, it will throw an error and
     #  show the stack trace. This can help you pinpoint exactly where the
     #  problematic operation occurred.
-
+    print(all_args.use_centralized_V)
     if all_args.algorithm_name == "rmappo":
         print("u are choosing to use rmappo, we set use_recurrent_policy to be True")
         all_args.use_recurrent_policy = True
@@ -122,6 +123,11 @@ def main(args):
     # When a policy is "recurrent," it means that the network has memory of past states, 
     # which can be important in partially observable environments where the current state
     #  does not contain all the information needed to make optimal decisions.
+    # #########
+    #########
+    ######
+    # it is a important part for hierarchical?
+    # 主要还是环境部分可观测的原因
 
     assert (all_args.share_policy == True and all_args.scenario_name == 'simple_speaker_listener') == False, (
         "The simple_speaker_listener scenario can not use shared policy. Please check the config.py.")
@@ -155,7 +161,7 @@ def main(args):
     # Further subdirectories are then made for the specific algorithm (all_args.algorithm_
     # name) and the specific experiment (all_args.experiment_name).
     # wandb
-    all_args.use_wandb = False
+    all_args.use_wandb = True
     if all_args.use_wandb:
         run = wandb.init(config=all_args,
                          project=all_args.env_name,

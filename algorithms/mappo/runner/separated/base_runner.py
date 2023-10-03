@@ -8,6 +8,8 @@ from tensorboardX import SummaryWriter
 
 from algorithms.mappo.utils.separated_buffer import SeparatedReplayBuffer
 from algorithms.mappo.utils.util import update_linear_schedule
+# The first script uses a SeparatedReplayBuffer, where each agent 
+# has its own buffer to store its experiences.
 
 def _t2n(x):
     return x.detach().cpu().numpy()

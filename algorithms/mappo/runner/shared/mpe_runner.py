@@ -110,7 +110,8 @@ class MPERunner(Runner):
             self.log_train(train_infos, total_num_steps)
 
           # eval
-        self.writter.add_scalar('communication_savings', 1 - tot_comms / (self.episode_length * self.num_agents * self.n_rollout_threads), episode)
+        if not self.use_wandb:
+            self.writter.add_scalar('communication_savings', 1 - tot_comms / (self.episode_length * self.num_agents * self.n_rollout_threads), episode)
         if episode % self.eval_interval == 0 and self.use_eval:
             self.eval(total_num_steps)
 
@@ -125,6 +126,8 @@ class MPERunner(Runner):
             share_obs = obs.reshape(self.n_rollout_threads, -1)
             share_obs = np.expand_dims(share_obs, 1).repeat(
                 self.num_agents, axis=1)
+                # This operation effectively converts each row of share_obs 
+                # into a row of single-row matrices.
             #last_actions = last_actions.reshape(self.n_rollout_threads, -1)
             #last_actions = np.expand_dims(last_actions, 1).repeat(
                 #self.num_agents, axis=1)

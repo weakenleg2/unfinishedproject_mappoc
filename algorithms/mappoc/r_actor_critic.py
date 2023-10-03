@@ -16,12 +16,12 @@ from algorithms.mappo.algorithms.utils.util import init, check
 # gain: A scaling factor used by some weight initialization methods to scale the weights.
 #  It's especially useful for methods like the Xavier initialization where the gain can
 #  be adjusted based on the activation function used in the network.
-from algorithms.mappo.algorithms.utils.cnn import CNNBase
+from algorithms.mappoc.utils.cnn import CNNBase
 # CNN 网络
-from algorithms.mappo.algorithms.utils.mlp import MLPBase
-from algorithms.mappo.algorithms.utils.rnn import RNNLayer
-from algorithms.mappo.algorithms.utils.act import ACTLayer
-from algorithms.mappo.algorithms.utils.popart import PopArt
+from algorithms.mappoc.utils.mlp import MLPBase
+from algorithms.mappoc.utils.rnn import RNNLayer
+from algorithms.mappoc.utils.act import ACTLayer
+from algorithms.mappoc.utils.popart import PopArt
 # Normalization of Policy and Advantage Re-estimation Target，反正就是一种normlization方法
 # "hidden states"（隐藏状态）是神经网络，特别是循环神经网络（Recurrent Neural Networks, RNN
 # ）中的一个术语。在RNN和其变体（如LSTM、GRU）中，隐藏状态是在每个时间步保存的内部状态，

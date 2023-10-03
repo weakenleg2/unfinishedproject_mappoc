@@ -4,6 +4,10 @@ import numpy as np
 import torch
 from tensorboardX import SummaryWriter
 from algorithms.mappo.utils.shared_buffer import SharedReplayBuffer
+# Policy and TrainAlgo classes being created in loops (self.policy = [] 
+# and self.trainer = []).可以看出agent是不是用同一个
+# agent uses the same policy and trainer
+# SharedReplayBuffer, where all agents share the same buffer
 
 def _t2n(x):
     """Convert torch tensor to a numpy array."""
@@ -15,6 +19,14 @@ class Runner(object):
     :param config: (dict) Config dictionary containing parameters for training.
     """
     def __init__(self, config):
+        #  config = {
+    #     "all_args": all_args,
+    #     "envs": envs,
+    #     "eval_envs": eval_envs,
+    #     "num_agents": num_agents,
+    #     "device": device,
+    #     "run_dir": run_dir
+    # }
 
         self.all_args = config['all_args']
         self.envs = config['envs']
@@ -29,25 +41,36 @@ class Runner(object):
         self.algorithm_name = self.all_args.algorithm_name
         self.experiment_name = self.all_args.experiment_name
         self.use_centralized_V = self.all_args.use_centralized_V
+        # use centralized training mode
         self.use_obs_instead_of_state = self.all_args.use_obs_instead_of_state
         self.num_env_steps = self.all_args.num_env_steps
+        # all episodes, maybe also related to the num of parellel env
         self.episode_length = self.all_args.episode_length
         self.n_trajectories = self.all_args.n_trajectories
         self.n_rollout_threads = self.all_args.n_rollout_threads
+        #用于训练部署的并行环境数量
         self.n_eval_rollout_threads = self.all_args.n_eval_rollout_threads
         self.n_render_rollout_threads = self.all_args.n_render_rollout_threads
         self.use_linear_lr_decay = self.all_args.use_linear_lr_decay
+        #by default, do not apply linear decay to learning rate. 
+        # If set, use a linear schedule on the learning rate
+
         self.actor_hidden_size = self.all_args.actor_hidden_size
+        #both 64
         self.critic_hidden_size = self.all_args.critic_hidden_size
         self.use_wandb = self.all_args.use_wandb
         self.use_render = self.all_args.use_render
         self.recurrent_N = self.all_args.recurrent_N
+        #The number of recurrent layers 1
 
         # interval
         self.save_interval = self.all_args.save_interval
+        #specifies how often the model's parameters should be saved during training,
+        #means save every step
         self.use_eval = self.all_args.use_eval
         self.eval_interval = self.all_args.eval_interval
         self.log_interval = self.all_args.log_interval
+        #training logs 5.
 
         # dir
         self.model_dir = self.all_args.model_dir
@@ -67,7 +90,9 @@ class Runner(object):
                 os.makedirs(self.save_dir)
 
         from algorithms.mappo.algorithms.r_mappo.r_mappo import R_MAPPO as TrainAlgo
+        # 算损失函数的，L
         from algorithms.mappo.algorithms.r_mappo.algorithm.rMAPPOPolicy import R_MAPPOPolicy as Policy
+        # 算action和action prob，value function和rnn states(这里就像是API，r_actor_critic是具体构建网络的地方)
 
         share_observation_space = self.envs.share_observation_space if self.use_centralized_V else self.envs.observation_space('agent_0')
 
@@ -77,6 +102,7 @@ class Runner(object):
                             share_observation_space,
                             self.envs.action_space('agent_0'),
                             device = self.device)
+        # self.critic = R_Critic部分用的集中式的observation
 
         if self.model_dir is not None:
             self.restore()
@@ -90,6 +116,7 @@ class Runner(object):
                                         self.envs.observation_space('agent_0'),
                                         share_observation_space,
                                         self.envs.action_space('agent_0'))
+        # all agents 用一个buffer可能是公用的
 
     def run(self):
         """Collect training data, perform training updates, and evaluate policy."""
@@ -114,17 +141,26 @@ class Runner(object):
     def compute(self):
         """Calculate returns for the collected data."""
         self.trainer.prep_rollout()
+        # train，有些train
         next_values = self.trainer.policy.get_values(np.concatenate(self.buffer.share_obs[-1]),
                                                 np.concatenate(self.buffer.rnn_states_critic[-1]),
                                                 np.concatenate(self.buffer.masks[-1]))
+        # value function predictions
         next_values = np.array(np.split(_t2n(next_values), self.n_rollout_threads))
         self.buffer.compute_returns(next_values, self.trainer.value_normalizer)
+        # 这里就是算的GAE
     
     def train(self):
         """Train policies with data in buffer. """
         self.trainer.prep_training()
         train_infos = self.trainer.train(self.buffer)      
         self.buffer.after_update()
+        # train_info['value_loss'] += value_loss.item()
+        # train_info['policy_loss'] += policy_loss.item()
+        # train_info['dist_entropy'] += dist_entropy.item()
+        # train_info['actor_grad_norm'] += actor_grad_norm
+        # train_info['critic_grad_norm'] += critic_grad_norm
+        # train_info['ratio'] += imp_weights.mean()
         return train_infos
 
     def save(self):
@@ -137,6 +173,7 @@ class Runner(object):
         if self.trainer._use_valuenorm:
             policy_vnorm = self.trainer.value_normalizer
             torch.save(policy_vnorm.state_dict(), str(self.save_dir) + "/vnorm.pt")
+        # 模型
 
     def restore(self):
         """Restore policy's networks from a saved model."""
@@ -148,7 +185,8 @@ class Runner(object):
             if self.trainer._use_valuenorm:
                 policy_vnorm_state_dict = torch.load(str(self.model_dir) + '/vnorm.pt')
                 self.trainer.value_normalizer.load_state_dict(policy_vnorm_state_dict)
- 
+                # 去除
+#  记录的地方
     def log_train(self, train_infos, total_num_steps):
         """
         Log training info.
@@ -158,6 +196,7 @@ class Runner(object):
         for k, v in train_infos.items():
             if self.use_wandb:
                 wandb.log({k: v}, step=total_num_steps)
+                # name, value
             else:
                 self.writter.add_scalars(k, {k: v}, total_num_steps)
 
