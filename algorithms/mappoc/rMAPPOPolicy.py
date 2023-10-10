@@ -1,5 +1,5 @@
 import torch
-from algorithms.mappo.algorithms.r_mappo.algorithm.r_actor_critic import R_Actor, R_Critic
+from algorithms.mappoc.r_actor_critic import R_Actor, R_Critic
 from algorithms.mappo.utils.util import update_linear_schedule
 # Decreases the learning rate linearly
 
@@ -27,7 +27,7 @@ class R_MAPPOPolicy:
         self.act_space = act_space
 
         self.actor = R_Actor(args, self.obs_space, self.act_space, self.device)
-        self.critic = R_Critic(args, self.share_obs_space, self.device)
+        self.critic = R_Critic(args, self.share_obs_space,self.act_space, self.device)
         self.init_dict = args
 
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(),
@@ -48,7 +48,7 @@ class R_MAPPOPolicy:
         update_linear_schedule(self.critic_optimizer, episode, episodes, self.critic_lr)
         
 
-    def get_actions(self, cent_obs, obs, rnn_states_actor, rnn_states_critic, masks, available_actions=None,
+    def get_actions(self, cent_obs, obs, masks, available_actions=None,
                     deterministic=False):
         """
         Compute actions and value function predictions for the given inputs.
@@ -67,16 +67,13 @@ class R_MAPPOPolicy:
         :return rnn_states_actor: (torch.Tensor) updated actor network RNN states.
         :return rnn_states_critic: (torch.Tensor) updated critic network RNN states.
         """
-        actions, action_log_probs, rnn_states_actor = self.actor(obs,
-                                                                 rnn_states_actor,
-                                                                 masks,
-                                                                 available_actions,
-                                                                 deterministic)
-        #  the forward method of a nn.Module class is called implicitly 
-        # when you invoke the object as if it were a function.
+        stochastic = True
+        option = self.actor.forward_option(obs,available_actions,stochastic)
+        action,action_log = self.actor.forward_action(obs,option,stochastic)
+                                                                 
 
-        values, rnn_states_critic = self.critic(cent_obs, rnn_states_critic, masks)
-        return values, actions, action_log_probs, rnn_states_actor, rnn_states_critic
+        terminal_adv,option_adv,option_adv_old = self.critic(cent_obs, option)
+        return option, action,action_log, terminal_adv,option_adv,option_adv_old
 
     def get_values(self, cent_obs, rnn_states_critic, masks):
         """

@@ -7,6 +7,122 @@ from algorithms.mappo.utils.valuenorm import ValueNorm
 #normalization of input 
 from algorithms.mappo.algorithms.utils.util import check
 #if input is numpy, convert to torch, if not, keep it
+import torch.optim as optim
+from torch.distributions import Categorical
+from collections import deque
+import time
+import os
+import shutil
+import gymnasium as gym
+# traj先不看
+# def traj_segment_generator(pi, env, horizon, stochastic, num_options,saves,results,rewbuffer,dc):
+#     # 目前猜测知识批量储存用，和replay buffer功能有差异
+#     # horizon指定长度
+#     t = 0
+#     ac = env.action_space.sample() # not used, just so we have the datatype
+#     new = True # marks if we're on first timestep of an episode
+#     ob = env.reset()
+
+#     cur_ep_ret = 0 # return in current episode 
+#     cur_ep_len = 0 # len of current episode
+#     ep_rets = [] # returns of completed episodes in this segment
+#     # it means calculating the total rewards for each episode that 
+#     # both started and ended within the boundaries of a specific segment
+#     ep_lens = [] # lengths of completed episodes in this segment
+
+#     # Initialize history arrays
+#     obs = np.array([ob for _ in range(horizon)])
+#     rews = np.zeros(horizon, 'float32')
+#     realrews = np.zeros(horizon, 'float32')
+#     vpreds = np.zeros(horizon, 'float32')
+#     news = np.zeros(horizon, 'int32')
+#     opts = np.zeros(horizon, 'int32')
+#     acs = np.array([ac for _ in range(horizon)])
+#     prevacs = acs.copy()
+
+
+#     option = pi.get_option(ob)
+#     # 网络？就是网络那边的get_option
+
+#     optpol_p=[]    
+#     term_p=[]
+#     value_val=[]
+#     opt_duration = [[] for _ in range(num_options)]
+#     logstds = [[] for _ in range(num_options)]
+#     curr_opt_duration = 0.
+
+
+#     while True:
+#         prevac = ac
+#         ac, vpred, feats,logstd = pi.act(stochastic, ob, option)
+#         logstds[option].append(logstd)
+#         # Slight weirdness here because we need value function at time T
+#         # before returning segment [0, T-1] so we get the correct
+#         # terminal value
+#         if t > 0 and t % horizon == 0:
+#             yield {"ob" : obs, "rew" : rews, "realrew": realrews, "vpred" : vpreds, "new" : news,
+#                     "ac" : acs, "opts" : opts, "prevac" : prevacs, "nextvpred": vpred * (1 - new),
+#                     "ep_rets" : ep_rets, "ep_lens" : ep_lens, 'term_p': term_p, 'value_val': value_val,
+#                      "opt_dur": opt_duration, "optpol_p":optpol_p, "logstds": logstds}
+#             # 产生数据？
+#             # Be careful!!! if you change the downstream algorithm to aggregate
+#             # several of these batches, then be sure to do a deepcopy
+#             ep_rets = []
+#             ep_lens = []
+#             term_p  = []
+#             value_val=[]
+#             opt_duration = [[] for _ in range(num_options)]
+#             logstds = [[] for _ in range(num_options)]
+#             curr_opt_duration = 0.
+
+#         i = t % horizon
+#         obs[i] = ob
+#         vpreds[i] = vpred
+#         news[i] = new
+#         opts[i] = option
+#         acs[i] = ac
+#         prevacs[i] = prevac
+
+
+#         ob, rew, new, _ = env.step(ac)
+#         rew = rew/10 if num_options > 1 else rew # To stabilize learning.
+#         rews[i] = rew
+#         realrews[i] = rew
+
+#         curr_opt_duration += 1
+
+#         ### Book-keeping
+#         t_p = []
+#         v_val = []
+#         for oopt in range(num_options):
+#             v_val.append(pi.get_vpred([ob],[oopt])[0][0])
+#             t_p.append(pi.get_tpred([ob],[oopt])[0][0])
+#         term_p.append(t_p)
+#         optpol_p.append(pi.get_option([ob])[0][0])
+#         value_val.append(v_val)
+#         term = pi.get_term([ob],[option])[0][0]
+#         ###
+
+#         if term:
+#             if num_options > 1:
+#                 rews[i] -= dc            
+#             opt_duration[option].append(curr_opt_duration)
+#             curr_opt_duration = 0.
+#             option = pi.get_option(ob)
+      
+#         cur_ep_ret += rew*10 if num_options > 1 else rew
+#         cur_ep_len += 1
+
+
+#         if new:
+#             ep_rets.append(cur_ep_ret)
+#             ep_lens.append(cur_ep_len)
+#             cur_ep_ret = 0
+#             cur_ep_len = 0
+#             ob = env.reset()
+#             option = pi.get_option(ob)
+#         t += 1
+
 
 class R_MAPPO():
     """
@@ -23,6 +139,9 @@ class R_MAPPO():
         self.device = device
         self.tpdv = dict(dtype=torch.float32, device=device)
         self.policy = policy
+
+        # self.num = 1
+        evals = False
 
         self.clip_param = args.clip_param
         # ppo clip parameter (default: 0.2)
@@ -90,6 +209,8 @@ class R_MAPPO():
         # (e.g., prioritized replay), some experiences might be given more importance 
         # than others
         self._use_policy_active_masks = args.use_policy_active_masks
+        # q_space_shape = (18+(num-1)*(5+4),)
+
         # whether to mask useless data in policy loss
         
         assert (self._use_popart and self._use_valuenorm) == False, ("self._use_popart and self._use_valuenorm can not be set True simultaneously")
@@ -315,15 +436,4 @@ class R_MAPPO():
         self.policy.critic.eval()
     # Training (train):
 
-# The central training loop.
-# First, it computes the advantages, which are essential for the PPO update. 
-# The advantages represent how much better an action was compared to the expected 
-# value from the critic.
-# It then loops through the PPO epochs and gets data batches using data generators.
-# For each batch, it performs a PPO update.
-# The training information (like losses, gradient norms, etc.) is aggregated over
-#  all updates.
-# Preparation Methods (prep_training and prep_rollout):
 
-# prep_training sets the policy's actor and critic to training mode.
-# prep_rollout sets the policy's actor and critic to evaluation mode.

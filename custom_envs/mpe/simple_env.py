@@ -95,6 +95,7 @@ class SimpleEnv(AECEnv):
             self.action_spaces[agent.name] = spaces.Tuple([
                 spaces.Box(
                     low=-1, high=1, shape=(self.world.dim_p,)
+                    # dim_p=2
                 ),
                 spaces.Discrete(self.world.dim_c),
                 ]

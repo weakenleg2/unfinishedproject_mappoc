@@ -69,7 +69,7 @@ class R_Actor(nn.Module):
 
         self.act_ctrl = ACTLayer(action_space[0], self.hidden_size, self._use_orthogonal, self._gain)
         self.act_com = ACTLayer(action_space[1], self.hidden_size, self._use_orthogonal, self._gain)
-        # get action and action logprob,正常来说simple_spread只有action只有5个，这个com应该是他自己加的.
+        #分别对应control和communication
 
         self.to(device)
 
