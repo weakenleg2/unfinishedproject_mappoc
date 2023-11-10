@@ -3,6 +3,28 @@ import numpy as np
 from algorithms.mappo.utils.util import get_shape_from_obs_space, get_shape_from_act_space
 import time
 import copy
+from torch.optim import Adam
+import psutil
+import copy
+import sys
+from algorithms.mappoc.dataset import Dataset
+# from baselines.common import Dataset, zipsame
+from algorithms.mappoc import logger
+# import baselines.common.tf_util as U
+# import tensorflow as tf, numpy as np
+import time
+from collections import deque
+# from baselines.common.mpi_adam import MpiAdam
+from mpi4py import MPI
+from gym import spaces
+import os
+import shutil
+from torch.distributions import Normal, kl_divergence
+
+import wandb
+wandb.init(project="mappoc_multiwalker_fixed", entity="2017920898")
+
+
 
 
 def _flatten(T, N, x):
@@ -65,6 +87,7 @@ def noise(deviation, x, ending):
         factor = 0.0
     noise = np.random.normal(0.0, factor)
     x += noise
+    # print(f"x:{x}")
     x = clip(x, -1.0, 1.0)
     return x
 
@@ -98,6 +121,92 @@ def clip(value, low, high):
     elif value <= low:
         value = low
     return value
+# def sync_old_new_params():
+#         for old_param, new_param in zip(oldagents[i].parameters(), agents[i].parameters()):
+#             old_param.data.copy_(new_param.data)
+import torch
+import torch.nn.functional as F
+
+def compute_losses(obs, acs, atargs, rets, lrmults, ops, term_adv, pol_ov_op_ents, agents, oldagents, clip_param, entcoeff):
+    # losses = []
+    # print(f"acs:{acs.shape}")
+    # for i in range(len(agents)):
+        # Probability ratio for actions
+    acs_tensor = torch.tensor(acs, dtype=torch.float32)
+
+    logp_new = agents.pd.log_prob(acs_tensor).sum(dim=-1)
+    logp_old = oldagents.pd.log_prob(acs_tensor).sum(dim=-1)
+    meankl = torch.mean(kl_divergence(agents.pd,oldagents.pd))
+    # 维度存疑
+    ratio = torch.exp(logp_new - logp_old)
+
+    # Clipped surrogate objective
+    # print(f"ratio:{ratio}")
+    # print(f"ratio:{type(ratio)}")
+    # print(f"atargs:{atargs.shape}")
+    surr1 =  (ratio.detach().numpy() * atargs)
+    surr2 = torch.clamp(ratio, 1.0 - clip_param * lrmults, 1.0 + clip_param * lrmults).detach().numpy() * atargs
+    pol_surr = -torch.min(torch.tensor(surr1), torch.tensor(surr2)).mean()
+    # print(pol_surr)
+
+    # Value function loss
+    # print(f"agents.vpred:{type(agents.vpred)}")
+    # print(f"rets:{type(rets)}")
+    vf_loss = F.mse_loss(agents.vpred, torch.tensor(rets))
+    # print(vf_loss.shape)
+
+    # Entropy
+    entropy = agents.pd.entropy().mean()
+    pol_entpen = - entcoeff * entropy
+
+    # Calculate logarithm of probability of policy over options
+
+    log_pi = torch.log(torch.clamp(agents.op_pi, min=1e-5, max=1.0))
+    # print(log_pi)
+    old_log_pi = torch.log(torch.clamp(oldagents.op_pi, min=1e-5, max=1.0))
+    
+    # Calculate entropy of policy over options
+    entropies = -(agents.op_pi * log_pi).sum(dim=1)
+    
+    # Calculate the PPO update for the policy over options
+    # print(ops[0])
+    ratio_pol_ov_op = torch.exp(log_pi.permute(1, 0)[ops[0]] - old_log_pi.permute(1, 0)[ops[0]])
+    # print(ratio_pol_ov_op)
+    
+    # Surrogate from conservative policy iteration
+    term_adv_clip = term_adv
+    # print(term_adv_clip)
+    surr1_pol_ov_op = ratio_pol_ov_op.detach().numpy() * term_adv_clip
+    surr2_pol_ov_op = torch.clamp(ratio_pol_ov_op, 1.0 - clip_param, 1.0 + clip_param).detach().numpy() * term_adv_clip
+    pol_surr_pol_ov_op = -torch.min(torch.tensor(surr1_pol_ov_op), torch.tensor(surr2_pol_ov_op)).mean()
+    
+    # Calculate the option policy loss
+    # print(pol_surr_pol_ov_op)
+    # print(pol_ov_op_ents * entropies.sum())
+    op_loss = pol_surr_pol_ov_op - pol_ov_op_ents * entropies.sum()
+
+    # Total loss
+    # print("shape")
+    # print(pol_surr.shape)
+    # print(vf_loss.shape)
+    # print(op_loss.shape)
+    total_loss = pol_surr + vf_loss + op_loss
+
+    # You might want to add other parts like option policy losses, etc.
+    # Append the calculated losses to the losses list
+    losses= [pol_surr, pol_entpen, vf_loss, meankl, entropy, op_loss]
+
+    return total_loss, losses
+
+
+def update_old_policy(old_model, current_model):
+    for old_param, current_param in zip(old_model.parameters(), current_model.parameters()):
+        if old_param.data.shape != current_param.data.shape:
+            print(f"Mismatch! Old param shape: {old_param.data.shape}, current param shape: {current_param.data.shape}")
+            raise ValueError("Parameter shapes do not match")
+        old_param.data.copy_(current_param.data)
+
+
 
 
 def traj_segment_generator_torch(agents, env, horizon, num, comm_weight, explo_iters, begintime, stoptime,
@@ -175,7 +284,7 @@ def traj_segment_generator_torch(agents, env, horizon, num, comm_weight, explo_i
         acts_hist.append([acts[i] for _ in range(horizon)])
         opt_duration_hist.append([[] for _ in range(num_options)])
         logstds_hist.append([[] for _ in range(num_options)])
-     print('Performing initial step...')
+    print('Performing initial step...')
     # perform initial action
     action = [1, 1, 1, 1]
     for i in range(num):
@@ -222,15 +331,18 @@ def traj_segment_generator_torch(agents, env, horizon, num, comm_weight, explo_i
 
     while True:
 
-        ### Apply action
+        ### Apply action实际上还是有这个交互过程，产生了，action，q_value,logprob
         for i in range(num):
             # Receive actions and vpreds
-            # 他agent是怎么来的呢
-            acts[i], vpreds[i], logstds[i] = agents[i].act(stochastic, obs[i], options[i])
+            # agent靠传递
+            # print(f"obs{i}:{len(obs[i])}")
+            _, vpreds[i], _, logstds[i] = agents[i].act(stochastic, obs[i], options[i])
+            acts[i] = np.random.uniform(-1, 1, 4)
+
             # 网络的东西了
             
             if t > 0 and t % horizon == 0:
-                print(acts[i])
+                print(f"acts[i]:{acts[i]}")
             logstds_hist[i][options[i]].append(copy.copy(logstds[i]))
             # add noise for encouraging exploration
             for k in range(4):
@@ -244,12 +356,11 @@ def traj_segment_generator_torch(agents, env, horizon, num, comm_weight, explo_i
 
             # Update the missing ep_rets
             for i in range(num):
-                print(acts[i])
+                print(f"acts[i]:{acts[i]}")
                 ep_rets[i].append(cur_ep_ret[i])
                 cur_ep_ret[i] = 0
                 ep_lens[i].append(cur_ep_len[i])
                 cur_ep_len[i]=0
-            # return？
             # Create new segs
             segs = []
             for i in range(num):
@@ -269,6 +380,7 @@ def traj_segment_generator_torch(agents, env, horizon, num, comm_weight, explo_i
             opt_duration_hist = lineup([[] for _ in range(num_options)], num)
             logstds_hist = lineup([[] for _ in range(num_options)], num)
             curr_opt_duration = lineup(0., num)
+            # 这边应该是到达边界后，进行数据储存并且refresh
         ###
 
         ### Save generated data
@@ -350,12 +462,15 @@ def traj_segment_generator_torch(agents, env, horizon, num, comm_weight, explo_i
             t_p = []
             v_val = []
             for oopt in range(num_options):
-                v_val.append(agents[i].get_vpred([obs[i]],[oopt])[0][0])
-                t_p.append(agents[i].get_tpred([obs[i]],[oopt])[0][0])
+                # print(f"obs[i]:{len(obs[i])}")
+                # 此处他index两次，但是不现实,trajectory应该只改了这边
+                v_val.append(agents[i].get_vpred(obs[i],oopt)[0])
+                t_p.append(agents[i].get_tpred(obs[i],oopt))
             term_p[i].append(t_p)
-            optpol_p_hist[i].append(agents[i]._get_op([obs[i]])[0][0])
+            optpol_p_hist[i].append(agents[i]._get_op(obs[i]))
             value_val_hist[i].append(v_val)
-            term[i] = agents[i].get_term([obs[i]],[options[i]])[0][0]
+            # print(f"agents[i].termination_sample:{agents[i].termination_sample[0]}")
+            term[i] = agents[i].termination_sample[0]
         ###
 
         # Check if termination of episode happens
@@ -408,6 +523,14 @@ def traj_segment_generator_torch(agents, env, horizon, num, comm_weight, explo_i
                     obs[i][20 + (num - 1) * 5 + k * 4: 20 + (num - 1) * 5 + (k + 1) * 4] = states[i][17 + j * 4:17 + (j + 1) * 4]
             ###
         t += 1
+# let us back to this function again, it is used to interact with the env and 
+# generate corresponding data right? let me tell you my understanding now, you 
+# can add, if I miss something, first it initializes some data, using list, 
+# then take action [1,1,1,1] especially to initialize the shape of obs and how
+#  to update obs. Then we enter the while true loop to generate data, then we 
+#   use networks to get action, prob, q_value, then we check if it is horizon,
+# if it is, we save and yield data, if not, we step to get new obs, reward and 
+# termination, then update obs as before, last we consider what if we meet termination.
 def learn(env, policy_func, *,
           timesteps_per_batch,  # timesteps per actor per update
           clip_param, entcoeff,  # clipping parameter epsilon, entropy coeff
@@ -427,53 +550,16 @@ def learn(env, policy_func, *,
           epoch=-1,
           seed=1,
           dc=0,
-          num):
+          num,
+          device):
 
     ### Fundamental definitions
     evals = False
     optim_batchsize_ideal = optim_batchsize
     np.random.seed(seed)
-    torch.set_random_seed(seed)
-    # encrypter necessary so torch1 does not mess up everything
-    # 这段先不管
-    # encrypter = ['abcd', 'efgh', 'ijkl', 'mnop', 'qrst', 'uvwx', 'bcde', 'fghi', 'jklm', 'nopq', 'rstu', 'vwxa', 
-    #              'cdef', 'ghij', 'klmn', 'opqr', 'stuv', 'wxab', 'defg', 'hijk', 'lmno', 'pqrs', 'tuvw', 'xabc']
-    # encrypter_old = ['dcba', 'hgfe', 'lkji', 'ponm', 'tsrq', 'xwvu', 'edcb', 'ihgf', 'mlkj', 'qpon', 'utsr', 'axwv',
-    #                  'fedc', 'jihg', 'nmkl', 'rqpo', 'vuts', 'baxw', 'gfed', 'kjih', 'onml', 'srqp', 'wvut', 'cbax']
-    # encrypter_lrmult = ['abcd_lrmult', 'efgh_lrmult', 'ijkl_lrmult', 'mnop_lrmult', 'qrst_lrmult', 'uvwx_lrmult',
-    #                     'bcde_lrmult', 'fghi_lrmult', 'jklm_lrmult', 'nopq_lrmult', 'rstu_lrmult', 'vwxa_lrmult',
-    #                     'cdef_lrmult', 'ghij_lrmult', 'klmn_lrmult', 'opqr_lrmult', 'stuv_lrmult', 'wxab_lrmult',
-    #                     'defg_lrmult', 'hijk_lrmult', 'lmno_lrmult', 'pqrs_lrmult', 'tuvw_lrmult', 'xabc_lrmult']
-    gamename = 'MultiWalker_'
-    gamename += 'seed' + str(seed) + '_'
-    gamename += app
-    version_name = 'HEM' # This variable: "version name, defines the name of the training"
-    dirname = '{}_{}_saves/'.format(version_name,gamename)
-
-    dirname_rel = os.path.dirname(__file__) # Retrieve everything using relative paths. Create a train_results folder where the repo has been cloned
-    splitted = dirname_rel.split("/")
-    dirname_rel = ("/".join(dirname_rel.split("/")[:len(splitted) - 3]) + "/")
-    dirname = dirname_rel + "train_results/" + dirname
-    # if saving -> create the necessary directories
-    if wsaves:
-        first=True
-        if not os.path.exists(dirname):
-            os.makedirs(dirname)
-            first = False
-        files = ['pposgd_simple.py','mlp_policy.py','run_mujoco.py'] # copy also the original files into the folder where the training results are stored
-        if epoch >=0:
-            first = False
-        else:
-            first = True
-        for i in range(len(files)):
-            src = os.path.join(dirname_rel,'baselines/baselines/ppo1/') + files[i]
-            #dest = os.path.join('/home/nfunk/results_NEW/ppo1/') + dirname
-            dest = dirname + "src_code/"
-            if (first):
-                os.makedirs(dest)
-                first = False
-            shutil.copy2(src,dest)
-    ###
+    torch.manual_seed(seed)    
+    
+   
 
     ### Setup all tensorflow functions and dependencies
     # Setup all functions
@@ -496,6 +582,7 @@ def learn(env, policy_func, *,
     ops = []
     term_adv = [] ## NO NAME CHANGE
     acs = []
+    rews = []
     kloldnew = [] ## NO NAME CHANGE
     ents = []
     meankl = [] ## NO NAME CHANGE
@@ -519,127 +606,46 @@ def learn(env, policy_func, *,
     pol_surr_pol_ov_op = [] ## NO NAME CHANGE
     op_loss = []
     for i in range(num):
-        agents.append(policy_func( q_space_shape, ac_space, pi_space_shape, mu_space_shape, num)) # Construct network for new policy
-        oldagents.append(policy_func( q_space_shape, ac_space, pi_space_shape, mu_space_shape, num)) # Network for old policy
-        # Creating a learnable parameter in PyTorch
-        lrmults = [[] for _ in range(num)]
-        clip_params.append(clip_param * lrmults[i]) # Annealed clipping parameter epsilon for PPO
-        atargs = [[] for _ in range(num)] # Target advantage function
-        rets= [[] for _ in range(num)] # Empirical return
-        pol_ov_op_ents= [[] for _ in range(num)] # Entropy coefficient for policy over options
-        obs= [[] for _ in range(num)] # Observations of each agent
-        ops= [[] for _ in range(num)] # Option chosen by each agent
-        term_adv= [[] for _ in range(num)] # Advantage of termination by each agent #### NO, adv of pol_ov_op ####
+        agents.append(policy_func(q_space_shape, ac_space, pi_space_shape, mu_space_shape, num)) # Construct network for new policy
+        # oldagents.append(policy_func( q_space_shape, ac_space, pi_space_shape, mu_space_shape, num)) # Network for old policy
+        obs.append([])
+        ops.append([])
+        acs.append([])
+        atargs.append([])
+        rews.append([])
+    # for i in range(num):
+    #     for old_param, current_param in zip(oldagents[i].parameters(), agents[i].parameters()):
+    #         # if old_param.data.shape != current_param.data.shape:
+    #         print(f"Mismatch! Old param shape: {old_param.data.shape}, current param shape: {current_param.data.shape}")
+            # print(f"old_model.parameters(), current_model.parameters():{oldagents[i].parameters().shape, agents[i].parameters().shape}")
         
-        acs.append(agents[i].pdtype.sample_placeholder([None]))
-
-        kloldnew.append(oldagents[i].pd.kl(agents[i].pd)) # Output datatype
-
-        ents.append(agents[i].pd.entropy()) # Entropy-scheduling values for each agent
-
-        meankl.append(torch.mean(kloldnew[i])) # Mean kl for each agent
-        meanents.append(torch.mean(ents[i])) # Mean entropies for each agent
-        pol_entpen.append((-entcoeff) * meanents[i])
-        ratios.append(torch.exp(agents[i].pd.logp(acs[i]) - oldagents[i].pd.logp(acs[i]))) # Probability of choosing action under new policy vs old policy (PPO)
-        atarg_clips.append(atargs[i]) # Advantage of choosing the action#
-        surr1.append(ratios[i] * atarg_clips[i]) # Surrogates from conservative policy iteration
-        surr2.append(torch.clip(ratios[i], 1.0 - clip_params[i], 1.0 + clip_params[i]) * atarg_clips[i])
-        pol_surr.append(- torch.mean(torch.minimum(surr1[i], surr2[i]))) # PPO's pessimistic surrogate (L^CLIP)
-        vf_losses.append(torch.mean(torch.square(agents[i].vpred - rets[i]))) # Losses on the Q-function
-        total_losses.append(pol_surr[i] + vf_losses[i]) # The total losses
-        log_pi.append(torch.log(torch.clip_by_value(agents[i].op_pi, 1e-5, 1.0))) # calculate logarithm of propability of policy over options
-        old_log_pi = torch.log(torch.clip_by_value(oldagents[i].op_pi, 1e-5, 1.0)) # calculate logarithm of propability of policy over options old parameter
-        entropies.append(-torch.reduce_sum(agents[i].op_pi * log_pi[i], reduction_indices=1)) # calculate entropy of policy over options
-        ratio_pol_ov_op.append(torch.exp(torch.transpose(log_pi[i])[ops[i][0]] - torch.transpose(old_log_pi[i])[ops[i][0]])) # calculate the ppo update for the policy over options
-        term_adv_clip.append(term_adv[i])
-        surr1_pol_ov_op.append(ratio_pol_ov_op[i] * term_adv_clip[i]) # surrogate from conservative policy iteration
-        surr2_pol_ov_op.append(torch.clip(ratio_pol_ov_op[i], 1.0 - clip_params[i], 1.0 + clip_params[i]) * term_adv_clip[i])
-        pol_surr_pol_ov_op.append(- torch.mean(torch.minimum(surr1_pol_ov_op[i], surr2_pol_ov_op[i]))) # PPO's pessimistic surrogate (L^CLIP)
-        op_loss.append(pol_surr_pol_ov_op[i] - pol_ov_op_ents[i] * torch.reduce_sum(entropies[i]))
-        losses.append([pol_surr[i], pol_entpen[i], vf_losses[i], meankl[i], meanents[i], op_loss[i]])
-        total_losses[i] += op_loss[i] # add loss of policy over options to total loss
-    loss_names = ["pol_surr", "pol_entpen", "vf_loss", "kl", "ent", "op_loss"]
-    # Setup optimizers and initialize session
+   
+    
     var_lists = []
     term_lists = []
     lossandgrads = []
     adams = []
     assign_old_eq_new = []
-    compute_losses = []
+    # compute_losses = []
+    
+    optimizers = []
+
     for i in range(num):
-        var_lists.append(agents[i].get_trainable_variables())
-        term_lists.append(var_lists[i][6:8])
-        # define function that we will later do gradient descent on
-        lossandgrads.append(U.function([obs[i], acs[i], atargs[i], rets[i], lrmults[i] ,ops[i], term_adv[i],
-                            pol_ov_op_ents[i]], losses[i] + [U.flatgrad(total_losses[i], var_lists[i])]))
-        adams.append(MpiAdam(var_lists[i], epsilon=adam_epsilon))
-        # define function that will assign the current parameters to the old policy
-        assign_old_eq_new.append(U.function([], [], updates=[tf.assign(oldv, newv)
-            for (oldv, newv) in zipsame(oldagents[i].get_variables(), agents[i].get_variables())]))
-        compute_losses.append(U.function([obs[i], acs[i], atargs[i], rets[i], lrmults[i], ops[i]], losses[i]))
-    U.initialize()
-    for i in range(num):
-        adams[i].sync()
+    # 1. Getting Trainable Variables: Directly use PyTorch model.parameters() method
+        var_lists.append(agents[i].parameters())
+        optimizer = torch.optim.Adam(agents[i].parameters(),lr=1e-5,eps=adam_epsilon) 
+        optimizers.append(optimizer)
+        # assign_old_eq_new.append(update_old_policy(oldagents[i], agents[i]))
+        # assign_old_eq_new.append(lambda i=i: update_old_policy(oldagents[i], agents[i]))
+
+
+    
     ###
 
-    ### Prepare logs and savers
-    # initialize "savers" which will store the results
-    saver = tf.train.Saver(max_to_keep=10000)
-    saver_best = torch.train.Saver(max_to_keep=20)
-    # Define the names of the .csv files for individual agents that are going to be stored
-    results = []
-    results_best_model = []
-    for i in range(num):
-        results.append(0)
-        results_best_model.append(0)
-        if saves:
-            if epoch>=0:
-                results[i] = open(dirname + version_name + '_' + gamename +'_' +'agent_' \
-                                  + str(i+1) +'_epoch_' + str(epoch) + '_results.csv','w')
-                results_best_model[i] = open(dirname + version_name + '_' + gamename +'_' \
-                                             +'agent_'+str(i+1)+'epoch_'+str(epoch)+'_bestmodel.csv','w')
-            else:
-                results[i] = open(dirname + version_name + '_' + gamename + '_' \
-                                  + 'agent_' + str(i + 1) + '_results.csv', 'w')
-                results_best_model[i] = open(dirname + version_name + '_' + gamename + '_' \
-                                             + 'agent_' + str(i + 1) + '_bestmodel.csv', 'w')
-            out = 'epoch,average reward,real reward,comm savings, average comm savings'
-            for opt in range(num_options): out += ',option {} dur'.format(opt)
-            for opt in range(num_options): out += ',option {} std'.format(opt)
-            #for opt in range(num_options): out += ',option {} term'.format(opt)
-            for opt in range(num_options): out += ',option {} adv'.format(opt)
-            for opt in range(num_options): out += ',option {} pol_surr'.format(opt)
-            for opt in range(num_options): out += ',option {} pol_entpen'.format(opt)
-            for opt in range(num_options): out += ',option {} vf_loss'.format(opt)
-            for opt in range(num_options): out += ',option {} meankl'.format(opt)
-            for opt in range(num_options): out += ',option {} meanents'.format(opt)
-            for opt in range(num_options): out += ',option {} op_loss'.format(opt)
-            #[pol_surr[i], pol_entpen[i], vf_losses[i], meankl[i], meanents[i], op_loss[i]]
-            out+='\n'
-            results[i].write(out)
-            # results.write('epoch,avg_reward,option 1 dur, option 2 dur, option 1 term, option 2 term\n')
-            results[i].flush()
-    # define a csv file for the group performance
-    if saves:
-        if epoch>=0:
-            group_results = open(dirname + version_name + '_' + gamename +'_' +'epoch_'
-                                 +str(epoch)+'_group_results.csv','w')
-        else:
-            group_results = open(dirname + version_name + '_' + gamename + '_' + 'group_results.csv', 'w')
-        out = 'epoch,average reward,sum of average reward,real reward,average comm savings, real comm savings'
-        out += '\n'
-        group_results.write(out)
-        group_results.flush()
-    # speciality: if running the training with epoch argument -> a model is loaded
-    if epoch >= 0:
-        dirname = '{}_{}_saves/'.format(version_name, gamename, num_options)
-        dirname_rel = os.path.dirname(
-            __file__)  # Retrieve everything using relative paths. Create a train_results folder where the repo has been cloned
-        splitted = dirname_rel.split("/")
-        dirname_rel = ("/".join(dirname_rel.split("/")[:len(splitted) - 3]) + "/")
-        dirname = dirname_rel + "train_results/" + dirname # so bis hier hin sind wir dann in dem Folder indem unsere Ergebnisse gespeichert werden
-        filename = dirname + '{}_epoch_{}.ckpt'.format(gamename,epoch)
-        saver.restore(U.get_session(),filename)
+    
+    
+    
+    oldagents = copy.deepcopy(agents)
     ###
 
     ### Start training process
@@ -652,6 +658,7 @@ def learn(env, policy_func, *,
     if epoch >= 0:
         iters_so_far += int(epoch)
     des_pol_op_ent = pol_ov_op_ent # define policy over options entropy scheduling
+    # 传进来的，entropy para都是穿进来的
     if epoch>entro_iters:
         if epoch>=final_entro_iters:
             des_pol_op_ent=final_pol_ov_op_ent
@@ -662,8 +669,45 @@ def learn(env, policy_func, *,
     tstart = time.time()
     allrew = max_val-1
     assert sum([max_iters>0, max_timesteps>0, max_episodes>0, max_seconds>0])==1, "Only one time constraint permitted"
-    seg_gen = traj_segment_generator(agents=agents, env=env, horizon=timesteps_per_batch, num=num, comm_weight=comm_weight, explo_iters=explo_iters, begintime=begintime,
-                                     stoptime=stoptime, deviation=deviation, stochastic=True, num_options=num_options, seed=seed)
+    ########
+    
+    # for i in range(num):
+    #     for old_param, current_param in zip(oldagents[i].parameters(), agents[i].parameters()):
+    #         if old_param.data.shape != current_param.data.shape:
+    #             print("Wrong")
+    seg_gen = traj_segment_generator_torch(agents=agents, env=env, horizon=timesteps_per_batch, 
+                                     num=num, comm_weight=comm_weight, 
+                                     explo_iters=explo_iters, begintime=begintime,
+                                     stoptime=stoptime, deviation=deviation, 
+                                     stochastic=True, num_options=num_options, seed=seed)
+    seg_gen_old = traj_segment_generator_torch(agents=oldagents, env=env, horizon=timesteps_per_batch, 
+                                     num=num, comm_weight=comm_weight, 
+                                     explo_iters=explo_iters, begintime=begintime,
+                                     stoptime=stoptime, deviation=deviation, 
+                                     stochastic=True, num_options=num_options, seed=seed)
+    # oldagents = copy.deepcopy(agents)
+
+    # for i in range(num):
+    #     for old_param, current_param in zip(oldagents[i].parameters(), agents[i].parameters()):
+    #         # if old_param.data.shape != current_param.data.shape:
+    #         print(f"Mismatch! Old param shape: {old_param.data.shape}, current param shape: {current_param.data.shape}")
+    # “ob”：观察结果
+    # “rew”：奖励
+    # “realrew”：真实奖励（可能在某些标准化或缩放之前）
+    # “vpred”：价值预测
+    # “new”：指示环境是否重置的标志（剧集结束）
+    # “ac”：代理采取的操作
+    # “opts”：代理使用的选项或模式（如果是基于选项的策略）
+    # “nextvpred”：用于价值函数估计中引导的下一个值预测
+    # “ep_rets”：episode return
+    # “ep_lens”：episode length
+    # “term_p”：终止概率（如果适用，对于基于选项的策略）
+    # “value_val”：价值函数评估
+    # “opt_dur”：选项持续时间
+    # “optpol_p”：选项策略概率
+    # “logstds”：标准差的对数（对于随机策略有用）
+    # 字典中的每个键对应于智能体与环境交互的不同方面，相关联的值是在轨迹段期间收集的数据
+    ##########
     segs = []
     datas = []
     savbuffer = lineup(deque(maxlen=100), num)
@@ -681,6 +725,8 @@ def learn(env, policy_func, *,
         losssaver=lineup([[], []], num)
         # Some error collecting
         if callback: callback(locals(), globals())
+        
+
         if max_timesteps and timesteps_so_far >= max_timesteps:
             break
         elif max_episodes and episodes_so_far >= max_episodes:
@@ -689,51 +735,58 @@ def learn(env, policy_func, *,
             break
         elif max_seconds and time.time() - tstart >= max_seconds:
             break
+
+                
         if schedule == 'constant':
             cur_lrmult = 1.0
+            # 初始是这个值
         elif schedule == 'linear':
             cur_lrmult =  max(1.0 - float(timesteps_so_far) / max_timesteps, 0)
         else:
             raise NotImplementedError
+    
+                
         # adapt the entropy to the desired value
         if (iters_so_far+1)>entro_iters:
             if iters_so_far>final_entro_iters:
                 des_pol_op_ent=final_pol_ov_op_ent
             else:
                 des_pol_op_ent=pol_ov_op_ent+(final_pol_ov_op_ent-pol_ov_op_ent)/(final_entro_iters-entro_iters)*(iters_so_far-entro_iters)
-        # every 50 epochs save the best model
-        if iters_so_far % 50 == 0 and wsaves:
-            print('Saving weights...')
-            if epoch > 0:
-                filename = dirname + '{}_epoch_{}_reload.ckpt'.format(gamename,iters_so_far)
-                save_path = saver.save(U.get_session(),filename)
-            else:
-                filename = dirname + '{}_epoch_{}.ckpt'.format(gamename, iters_so_far)
-                save_path = saver.save(U.get_session(), filename)
-            print('...Done')
-        # adaptively save best model -> if current reward is highest, save the model
-        if (allrew>max_val) and wsaves:
-            print('Saving best weights...')
-            max_val = allrew
-            for i in range(num):
-                results_best_model[i].write('epoch: '+str(iters_so_far) + 'rew: ' + str(np.mean(rewbuffer[i])) + '\n')
-                results_best_model[i].flush()
-                filename = dirname + 'agent_' + str(i+1) + '_best.ckpt'.format(gamename,iters_so_far)
-            save_path = saver_best.save(U.get_session(),filename)
-            if epoch > 0:
-                filename = dirname + '{}_epoch_{}_reload.ckpt'.format(gamename,iters_so_far)
-                save_path = saver_best.save(U.get_session(),filename)
-            else:
-                filename = dirname + '{}_epoch_{}.ckpt'.format(gamename, iters_so_far)
-                save_path = saver_best.save(U.get_session(), filename)
-            print('...Done')
+        
+        
+
+            # print('...Done')
 
         ### Starting the training iteration
         logger.log("*********** Iteration %i *************" % iters_so_far)
         # Sample (s,a)-Transitions
         print('Sampling trajectories...')
+        # for i in range(num):
+        #     print(f"Agent {i} parameter shapes before trajectory generation:")
+        #     for param in agents[i].parameters():
+        #         print(param.data.shape)
+        # for i in range(num):
+        #     for old_param, current_param in zip(oldagents[i].parameters(), agents[i].parameters()):
+        #         if old_param.data.shape != current_param.data.shape:
+        #             print("Wrong")
+        #         if old_param.data.shape == current_param.data.shape:
+        #             print("Right")
         segs = seg_gen.__next__()
+        # oldagents = copy.deepcopy(agents)
+
+        seg_gen_olds = seg_gen_old.__next__()
+
+        # for i in range(num):
+        #     print(f"Agent {i} parameter shapes after trajectory generation:")
+        #     for param in agents[i].parameters():
+        #         print(param.data.shape)
         # Evaluation sequence for one iteration
+        # for i in range(num):
+        #     for old_param, current_param in zip(oldagents[i].parameters(), agents[i].parameters()):
+        #         if old_param.data.shape != current_param.data.shape:
+        #             print("Wrong")
+        #         if old_param.data.shape == current_param.data.shape:
+        #             print("Right")
         segment=[]
         if wsaves:
             print("Optimizing...")
@@ -741,9 +794,13 @@ def learn(env, policy_func, *,
         # splitting by agent i
         lrlocal = lineup([],num)
         listoflrpairs = lineup([],num)
+        
         for i in range(num):
             #print('-----------Agent', str(i + 1), '------------')
             add_vtarg_and_adv(segs[i], gamma, lam) # Calculate A(s,a,o) using GAE
+            
+            
+            
             # calculate information for logging
             opt_d = []
             std = []
@@ -753,13 +810,21 @@ def learn(env, policy_func, *,
                 logstd = np.mean(segs[i]['logstds'][j]) if len(segs[i]['logstds'][j]) > 0 else 0.
                 std.append(np.exp(logstd))
             print("mean std of agent ", str(i+1), ":", std)
-            obs[i], acs[i], ops[i], atargs[i], tdlamret = segs[i]["ob"], segs[i]["ac"], segs[i]["opts"], segs[i]["adv"],\
+            
+            obs[i], acs[i], ops[i], atargs[i],rews[i], tdlamret = segs[i]["ob"], segs[i]["ac"], segs[i]["opts"], segs[i]["adv"],segs[i]["rew"],\
                                                           segs[i]["tdlamret"]
             #vpredbefore = segs[i]["vpred"] # predicted value function before udpate
             atargs[i] = (atargs[i] - atargs[i].mean()) / atargs[i].std() # standardized advantage function estimate
             if hasattr(agents[i], "ob_rms"): agents[i].ob_rms.update(obs[i]) # update running mean/std for policy
             if hasattr(agents[i], "ob_rms_only"): agents[i].ob_rms_only.update(obs[i])
-            assign_old_eq_new[i]() # set old parameter values to new parameter values
+            # for i in range(num):
+            #     for old_param, current_param in zip(oldagents[i].parameters(), agents[i].parameters()):
+            #         # if old_param.data.shape != current_param.data.shape:
+            #         print(f"Mismatch! Old param shape: {old_param.data.shape}, current param shape: {current_param.data.shape}")
+            # update_old_policy(oldagents[i], agents[i])
+            # assign_old_eq_new[i]() # set old parameter values to new parameter values
+            # for update in assign_old_eq_new:
+            #     update()
             # minimum batch size:
             min_batch=160
             t_advs = [[] for _ in range(num_options)]
@@ -774,7 +839,8 @@ def learn(env, policy_func, *,
                 # This part is only necessary when we use options. We proceed to these verifications in order not to discard any collected trajectories.
                 if datas[i][opt] != 0:
                     if (indices.size < min_batch and datas[i][opt].n > min_batch):
-                        datas[i][opt] = Dataset(dict(ob=obs[i][indices], ac=acs[i][indices], atarg=atargs[i][indices],
+                        datas[i][opt] = Dataset(dict(ob=obs[i][indices], ac=acs[i][indices], atarg=atargs[i][indices],op=ops[i][indices]
+                                                     ,rews = rews[i][indices],
                                                      vtarg=tdlamret[indices]), shuffle=not agents[i].recurrent)
                         t_advs[opt].append(0.)
                         continue
@@ -784,8 +850,9 @@ def learn(env, policy_func, *,
                         cat_ob = np.concatenate((oldmap['ob'],obs[i][indices]))
                         cat_ac = np.concatenate((oldmap['ac'],acs[i][indices]))
                         cat_atarg = np.concatenate((oldmap['atarg'],atargs[i][indices]))
+                        cat_rews = np.concatenate((oldmap['rews'],rews[i][indices]))
                         cat_vtarg = np.concatenate((oldmap['vtarg'],tdlamret[indices]))
-                        datas[i][opt] = Dataset(dict(ob=cat_ob, ac=cat_ac, atarg=cat_atarg, vtarg=cat_vtarg),
+                        datas[i][opt] = Dataset(dict(ob=cat_ob, ac=cat_ac, atarg=cat_atarg, rews = cat_rews,vtarg=cat_vtarg),
                                                 shuffle=not agents[i].recurrent)
                         t_advs[opt].append(0.)
                         continue
@@ -795,41 +862,108 @@ def learn(env, policy_func, *,
                         cat_ob = np.concatenate((oldmap['ob'],obs[i][indices]))
                         cat_ac = np.concatenate((oldmap['ac'],acs[i][indices]))
                         cat_atarg = np.concatenate((oldmap['atarg'],atargs[i][indices]))
+                        cat_rews = np.concatenate((oldmap['rews'],rews[i][indices]))
+
                         cat_vtarg = np.concatenate((oldmap['vtarg'],tdlamret[indices]))
-                        datas[i][opt] = d = Dataset(dict(ob=cat_ob, ac=cat_ac, atarg=cat_atarg, vtarg=cat_vtarg),
+                        datas[i][opt] = d = Dataset(dict(ob=cat_ob, ac=cat_ac, atarg=cat_atarg, rews = cat_rews,vtarg=cat_vtarg),
                                                     shuffle=not agents[i].recurrent)
                     if (indices.size > min_batch and datas[i][opt].n > min_batch):
                         datas[i][opt] = d = Dataset(dict(ob=obs[i][indices], ac=acs[i][indices],
-                                                         atarg=atargs[i][indices], vtarg=tdlamret[indices]),
+                                                         atarg=atargs[i][indices], rews = rews[i][indices], vtarg=tdlamret[indices]),
                                                     shuffle=not agents[i].recurrent)
                 elif datas[i][opt] == 0:
-                    datas[i][opt] = d = Dataset(dict(ob=obs[i][indices], ac=acs[i][indices], atarg=atargs[i][indices],
+                    datas[i][opt] = d = Dataset(dict(ob=obs[i][indices], ac=acs[i][indices], atarg=atargs[i][indices],rews = rews[i][indices],
                                                      vtarg=tdlamret[indices]), shuffle=not agents[i].recurrent)
+                    # print(len(obs[i][indices]))
                 # define the batchsize of the optimizer:
+                
                 optim_batchsize = optim_batchsize or obs[i].shape[0]
+                # print(f"optim_batchsize:{obs[i].shape[0]}")
                 #print("optim epochs:", optim_epochs)
                 # Here we do a bunch of optimization epochs over the data
                 for _ in range(optim_epochs):
+                    # k = 0
                     losses = [] # list of tuples, each of which gives the loss for a minibatch
                     for batch in d.iterate_once(optim_batchsize):
+                        # k+=1
+                        # print(d.iterate_once(optim_batchsize))
+                        # print(optim_batchsize)
 
                         # Calculate advantage for using specific option here
-                        tadv,nodc_adv = agents[i].get_opt_adv(batch["ob"],[opt])
+                        # for i in range(optim_batchsize):
+                        tadv,nodc_adv = agents[i].get_opt_adv(batch["ob"],opt)
                         tadv = tadv if num_options > 1 else np.zeros_like(tadv)
                         t_advs[opt].append(nodc_adv)
-                        # calculate the gradient
-                        *newlosses, grads = lossandgrads[i](batch["ob"], batch["ac"], batch["atarg"], batch["vtarg"],
-                                                            cur_lrmult, [opt], tadv,des_pol_op_ent)
-                        # perform gradient update
-                        if wsaves:
-                            adams[i].update(grads, optim_stepsize * cur_lrmult)
-                        losses.append(newlosses)
-                    # at the end of batch, save all the mean losses
+                        # # calculate the gradient
+                        # *newlosses, grads = lossandgrads[i](batch["ob"], batch["ac"], batch["atarg"], batch["vtarg"],
+                        #                                     cur_lrmult, [opt], tadv,des_pol_op_ent)
+                        # # perform gradient update
+                        # if wsaves:
+                        #     adams[i].update(grads, optim_stepsize * cur_lrmult)
+                        # losses.append(newlosses)
+                        for optimizer in optimizers:
+                            optimizer.zero_grad()
 
+    
+                        # Extracting data from the batch
+                        observations = batch["ob"]
+                        observations = torch.FloatTensor(observations).to(device)
+                        actions = batch["ac"]
+                        advantages = batch["atarg"]
+                        rets = batch["rews"]
+
+                        # ... (you might have more data to extract like rewards, options, etc.)
+                        
+                        # Forward pass: Make predictions or compute the output using the model
+                        # agents.append(policy_func( q_space_shape, ac_space, pi_space_shape, mu_space_shape, num)) # Construct network for new policy
+                        # oldagents.append(policy_func( q_space_shape, ac_space, pi_space_shape, mu_space_shape, num)) # Network for old policy
+                        # Creating a learnable parameter in PyTorch
+                        
+                        # Calculate the loss between the predictions and the target values
+                        # print(f"len(cur_lrmult):{cur_lrmult}")
+                        loss,loss_append = compute_losses(observations, actions, advantages, rets, cur_lrmult, [opt], 
+                                              tadv, des_pol_op_ent, agents[i], oldagents[i], clip_param, entcoeff)
+                        wandb.log({"loss": loss})
+
+                        #  ops, 
+                        # print("#################")
+                        # print("done")
+                        # Backward pass: Compute the gradient of the loss w.r.t the model parameters
+                        loss.backward()
+                        
+                        # Perform a single optimization step (parameter update)
+                        for optimizer in optimizers:
+                            optimizer.zero_grad()
+                        # print("#################")
+                        # print("done")
+                        # print(loss_append)
+                        losses.append(loss_append)
+
+                    # for i in range(num):
+                    oldagents[i].load_state_dict(agents[i].state_dict())
+                    # 检查parameter等不等
+                    # print(k)
+                    # oldagents = copy.deepcopy(agents)
+
+
+                    # at the end of batch, save all the mean losses
+                    # print("len")
+                    # print(losses)
+                    # print(len(losses))
+                    # shape不太一样
+                    # print(type(losses))
+                    # print(losses[0])
+                    # print(len(losses[0]))
+                    # losses = torch.stack(losses)
+                    losses_detached = []
+                    for row in losses:
+                        row_detached = [tensor.detach().numpy() for tensor in row]
+                        losses_detached.append(row_detached)
                     tempsaver=[0,0,0,0,0,0]
-                    for n in range(len(losses[0])):
+                    for n in range(len(losses[0])):                
+                        # losses_detached = [loss.detach().numpy() for loss in losses]
                         k=n+1
-                        tempsaver[n]=np.mean(np.array(losses)[:,n:k])
+                        tempsaver[n]=np.mean(np.array(losses_detached)[:,n:k])
                     losssaver[i][opt].append(tempsaver.copy())
             ###
 
@@ -845,37 +979,18 @@ def learn(env, policy_func, *,
             rewbuffer[i].extend(rews)
             for k in range(num):
                 realrew[i]=np.mean(rews)
+            # wandb.log({"rcomm_savings": comm_savings}, step=step)
+
             comm_savings[i] = len(np.where(ops[i]==0)[0])/timesteps_per_batch
+            # wandb.log({"comm_savings": comm_savings})
             savbuffer[i].extend([comm_savings[i]])
             # The last started episode pulls down the average and is therefore discarded in statistics
-            logger.record_tabular("EpLenMean of Agent " + str(i+1) + ": ", np.mean(lenbuffer[i][:,:-1]))
-            logger.record_tabular("EpRewMean of Agent " + str(i + 1) + ": ", np.mean(rewbuffer[i]))
-            logger.record_tabular("Comm_sav of Agent " + str(i + 1) + ": ", comm_savings[i])
+            # logger.record_tabular("EpLenMean of Agent " + str(i+1) + ": ", np.mean(lenbuffer[i][:,:-1]))
+            # logger.record_tabular("EpRewMean of Agent " + str(i + 1) + ": ", np.mean(rewbuffer[i]))
+            # logger.record_tabular("Comm_sav of Agent " + str(i + 1) + ": ", comm_savings[i])
 
-            ### Agent Book keeping
-            if saves:
-                out = "{},{},{},{},{}"
-                for _ in range(num_options): out += ",{},{},{},{},{},{},{},{},{}"
-                out += "\n"
-                info = [iters_so_far, np.mean(rewbuffer[i]), realrew[i], np.mean(savbuffer[i]), comm_savings[i]]
-                for j in range(num_options): info.append(opt_d[j])
-                for j in range(num_options): info.append(std[j])
-                for j in range(num_options): info.append(np.mean(t_advs[j]))
-                for n in range(len(losses[0])):
-                    k=n+1
-                    for j in range(num_options):
-                        if np.array(losssaver[i][j]).ndim == 1:
-                            info.append(losssaver[i][j])
-                        elif np.array(losssaver[i][j]).ndim == 0:
-                            info.append(0)
-                            print('WARNING: 0 dim in losses, only one option chosen')
-                        else:
-                            info.append(np.mean(np.array(losssaver[i][j])[:,n:k]))
-
-                results[i].write(out.format(*info))
-                results[i].flush()
-            ###
-        ###
+           
+       
         if wsaves:
             print('...Done, duration: ', str(int(time.time() - start_opt)), 'seconds')
         ### Group Book keeping
@@ -885,6 +1000,9 @@ def learn(env, policy_func, *,
             sumrew += np.mean(rewbuffer[i])
         allrew = sumrew/num
         realrealrew = np.mean(realrew)
+        wandb.log({"rews": realrealrew})
+
+
         avg_comm_save = 0
         for i in range(num):
             avg_comm_save += comm_savings[i]
@@ -893,13 +1011,9 @@ def learn(env, policy_func, *,
         for i in range(num):
             avg_group_comm_save += np.mean(savbuffer[i])
         avg_group_comm_save = avg_group_comm_save/num
-        if saves:
-            out = "{},{},{},{},{},{}"
-            out += "\n"
-            info = [iters_so_far, allrew, sumrew, realrealrew, avg_group_comm_save,avg_comm_save]
-            group_results.write(out.format(*info))
-            group_results.flush()
-        ###
+        wandb.log({"comm_savings": avg_group_comm_save})
+
+        
 
         ### Final logging
         iters_so_far += 1
