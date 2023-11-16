@@ -1,6 +1,5 @@
 import torch
 import numpy as np
-from algorithms.mappo.utils.util import get_shape_from_obs_space, get_shape_from_act_space
 import time
 import copy
 from torch.optim import Adam
@@ -8,45 +7,26 @@ import psutil
 import copy
 import sys
 from algorithms.mappoc.dataset import Dataset
-# from baselines.common import Dataset, zipsame
 from algorithms.mappoc import logger
-# import baselines.common.tf_util as U
-# import tensorflow as tf, numpy as np
 import time
 from collections import deque
-# from baselines.common.mpi_adam import MpiAdam
 from mpi4py import MPI
 from gym import spaces
 import os
 import shutil
 from torch.distributions import Normal, kl_divergence
+import torch
+import torch.nn.functional as F
 
-import wandb
-wandb.init(project="mappoc_multiwalker_fixed", entity="2017920898")
-
-
-
-
-def _flatten(T, N, x):
-    return x.reshape(T * N, *x.shape[2:])
+# import wandb
+# wandb.init(project="mappoc_multiwalker_fixed", entity="2017920898")
 
 
-def _cast(x):
-    return x.transpose(1, 2, 0, 3).reshape(-1, *x.shape[3:])
 def flatten_lists(listoflists):
     return [el for list_ in listoflists for el in list_]
 
-def appender(rando, limit):
-    out = []
-    for i in range(limit):
-        out.append(rando[i][:-1]) # The last unfinished episode pulls down the average and is therefore discarded
-    return np.mean(out)
 
-def sumer(rando, limit):
-    out = 0
-    for i in range(limit):
-        out += np.mean(rando[i][:-1]) # The last unfinished episode pulls down the average and is therefore discarded
-    return out
+
 
 def lineup(func, count):
     x = []
@@ -54,9 +34,7 @@ def lineup(func, count):
         x.append(copy.copy(func))
     return x
 
-def render(env, times):
-    env.render()
-    time.sleep(times)
+
 
 def add_vtarg_and_adv(seg, gamma, lam):
     """
@@ -74,12 +52,7 @@ def add_vtarg_and_adv(seg, gamma, lam):
         gaelam[t] = lastgaelam = delta + gamma * lam * nonterminal * lastgaelam
     seg["tdlamret"] = seg["adv"] + seg["vpred"]
 
-def sorting(count, i):
-    x = []
-    for j in range(count):
-        x.append(j)
-    x.remove(i)
-    return x
+
 
 def noise(deviation, x, ending):
     factor = deviation * (ending-iters_so_far)/ending
@@ -121,13 +94,16 @@ def clip(value, low, high):
     elif value <= low:
         value = low
     return value
-# def sync_old_new_params():
-#         for old_param, new_param in zip(oldagents[i].parameters(), agents[i].parameters()):
-#             old_param.data.copy_(new_param.data)
-import torch
-import torch.nn.functional as F
 
-def compute_losses(obs, acs, atargs, rets, lrmults, ops, term_adv, pol_ov_op_ents, agents, oldagents, clip_param, entcoeff):
+def are_networks_equal(net1, net2):
+    for param1, param2 in zip(net1.parameters(), net2.parameters()):
+        if param1.data.ne(param2.data).sum() > 0:
+            print("false")
+            return False
+    print("true")
+    return True
+
+def compute_losses( acs, atargs, rets, lrmults, ops, term_adv, pol_ov_op_ents, agents, oldagents, clip_param, entcoeff):
     # losses = []
     # print(f"acs:{acs.shape}")
     # for i in range(len(agents)):
@@ -336,8 +312,8 @@ def traj_segment_generator_torch(agents, env, horizon, num, comm_weight, explo_i
             # Receive actions and vpreds
             # agent靠传递
             # print(f"obs{i}:{len(obs[i])}")
-            _, vpreds[i], _, logstds[i] = agents[i].act(stochastic, obs[i], options[i])
-            acts[i] = np.random.uniform(-1, 1, 4)
+            acts[i], vpreds[i], _, logstds[i] = agents[i].act(stochastic, obs[i], options[i])
+            #  = np.random.uniform(-1, 1, 4)
 
             # 网络的东西了
             
@@ -921,9 +897,9 @@ def learn(env, policy_func, *,
                         
                         # Calculate the loss between the predictions and the target values
                         # print(f"len(cur_lrmult):{cur_lrmult}")
-                        loss,loss_append = compute_losses(observations, actions, advantages, rets, cur_lrmult, [opt], 
+                        loss,loss_append = compute_losses( actions, advantages, rets, cur_lrmult, [opt], 
                                               tadv, des_pol_op_ent, agents[i], oldagents[i], clip_param, entcoeff)
-                        wandb.log({"loss": loss})
+                        # wandb.log({"loss": loss})
 
                         #  ops, 
                         # print("#################")
@@ -940,7 +916,10 @@ def learn(env, policy_func, *,
                         losses.append(loss_append)
 
                     # for i in range(num):
+                    # are_networks_equal(agents[i],oldagents[i])
                     oldagents[i].load_state_dict(agents[i].state_dict())
+                    # are_networks_equal(agents[i],oldagents[i])
+
                     # 检查parameter等不等
                     # print(k)
                     # oldagents = copy.deepcopy(agents)
@@ -1000,7 +979,7 @@ def learn(env, policy_func, *,
             sumrew += np.mean(rewbuffer[i])
         allrew = sumrew/num
         realrealrew = np.mean(realrew)
-        wandb.log({"rews": realrealrew})
+        # wandb.log({"rews": realrealrew})
 
 
         avg_comm_save = 0
@@ -1011,7 +990,7 @@ def learn(env, policy_func, *,
         for i in range(num):
             avg_group_comm_save += np.mean(savbuffer[i])
         avg_group_comm_save = avg_group_comm_save/num
-        wandb.log({"comm_savings": avg_group_comm_save})
+        # wandb.log({"comm_savings": avg_group_comm_save})
 
         
 

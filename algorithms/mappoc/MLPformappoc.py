@@ -52,21 +52,22 @@ class Dense3D2(nn.Module):
         if isinstance(out_features, torch.Tensor):
             out_features = out_features.item()
 
-        # self.weight = nn.Parameter(torch.Tensor(num_options, in_features, out_features))
-
         self.weight = nn.Parameter(torch.Tensor(num_options, in_features, out_features))
         if bias:
             self.bias = nn.Parameter(torch.Tensor(num_options, out_features))
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+            bound = 1 / math.sqrt(fan_in)
+            nn.init.uniform_(self.bias, -bound, bound)
         else:
             self.register_parameter('bias', None)
         if weight_init is not None:
             weight_init(self.weight)
-        else:
-            nn.init.orthogonal_(self.weight, a=math.sqrt(5))
-            if self.bias is not None:
-                fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
-                bound = 1 / math.sqrt(fan_in)
-                nn.init.uniform_(self.bias, -bound, bound)
+        # else:
+        #     nn.init.orthogonal_(self.weight, a=math.sqrt(5))
+        #     if self.bias is not None:
+        #         fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+        #         bound = 1 / math.sqrt(fan_in)
+        #         nn.init.uniform_(self.bias, -bound, bound)
 
     def forward(self, x, option):
         # Select the weights and bias for the given option
@@ -75,6 +76,8 @@ class Dense3D2(nn.Module):
         if not isinstance(option, int):
             option = option.long().item()
         w = self.weight[option]
+        # print(f"w:{w}")
+        # print(f"bias:{self.bias}")
 
         b = self.bias[option] if self.bias is not None else None
         # print("x.shape:", x.shape)
@@ -239,20 +242,27 @@ class MLPBase(nn.Module):
         ### Define the policy over options
         # print(f"obz_mu:{obz_mu}")
         option_val0 = self.option_net0(obz_mu)
+        # print(f"option_val0:{option_val0}")
         option_val1 = self.option_net1(obz_mu)
         if len(option_val0.shape) == 1:
             option_val0 = option_val0.unsqueeze(1)
         if len(option_val1.shape) == 1:
             option_val1 = option_val1.unsqueeze(1)
+        # print(f"option_val01:{option_val0}")
 
-        option_vals = torch.cat([option_val0, option_val1], dim=1)
+        option_vals = torch.cat([option_val0, option_val1], dim=1).detach()
+        
         op_pi = F.softmax(option_vals, dim=1)
         self.op_pi = op_pi
+        # print(f"option_vals:{option_vals.size(1)}")
         self.termhead = Dense3D2(option_vals.size(1), 1, num_options=self.num_options, weight_init=nn.init.orthogonal_)
         # print(option.shape)
         if option is not None:
             tpred_logits = self.termhead(option_vals, option)
+            # print(f"tpred_logits:{tpred_logits}")
             self.tpred = torch.sigmoid(tpred_logits).squeeze(-1)
+            # print(self.tpred)
+        # tpred检查完毕
         # print(f"tpred:{self.tpred}")
         self.termination_sample = torch.tensor([True], dtype=torch.bool)
         ###
