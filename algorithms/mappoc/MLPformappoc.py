@@ -13,27 +13,12 @@ import numpy as np
 def prepare_observation(obs):
     obs_tensor = torch.tensor(obs, dtype=torch.float32)
     if obs_tensor.ndim == 1:
+        # print("true")
         # 单个观测，增加一个批次维度
         obs_tensor = obs_tensor.unsqueeze(0)
     # 如果已经是批量观测，则不需要改动
     return obs_tensor
-class DiagonalGaussianPolicy:
-    def __init__(self, action_dim):
-        self.action_dim = action_dim
-    
-    def sample(self, mean, log_std):
-        std = torch.exp(log_std)
-        normal_distribution = Normal(mean, std)
-        return normal_distribution.sample()
-    
-    def log_prob(self, mean, log_std, action):
-        std = torch.exp(log_std)
-        normal_distribution = Normal(mean, std)
-        return normal_distribution.log_prob(action).sum(-1)
-    
-    # def entropy(self, log_std):
-    #     std = torch.exp(log_std)
-    #     return normal_distribution.entropy().sum(-1)
+
 class Dense3D2(nn.Module):
     def __init__(self, in_features, out_features, num_options, weight_init=None, bias=True):
         super(Dense3D2, self).__init__()
@@ -62,12 +47,9 @@ class Dense3D2(nn.Module):
             self.register_parameter('bias', None)
         if weight_init is not None:
             weight_init(self.weight)
-        # else:
-        #     nn.init.orthogonal_(self.weight, a=math.sqrt(5))
-        #     if self.bias is not None:
-        #         fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
-        #         bound = 1 / math.sqrt(fan_in)
-        #         nn.init.uniform_(self.bias, -bound, bound)
+        else:
+            nn.init.orthogonal_(self.weight, a=math.sqrt(5))
+       
 
     def forward(self, x, option):
         # Select the weights and bias for the given option
@@ -80,10 +62,7 @@ class Dense3D2(nn.Module):
         # print(f"bias:{self.bias}")
 
         b = self.bias[option] if self.bias is not None else None
-        # print("x.shape:", x.shape)
-        # print("w.shape:", w.shape)
-        # print("b.shape:", b.shape if b is not None else "No bias")
-        # output = torch.nn.functional.linear(x, w.T, b)
+        
 
 
         return F.linear(x, w.T, b)
@@ -92,6 +71,8 @@ class Dense3D2(nn.Module):
 # Instead of having a single set of weights and biases for the layer, it 
 # has multiple sets, one for each "option". This allows the network to have
 #  different transformations based on the selected option.
+
+
 class RunningMeanStd:
     # This is a simple running mean and standard deviation calculator
     def __init__(self, shape=()):
@@ -100,7 +81,10 @@ class RunningMeanStd:
         self.count = torch.tensor(1e-4)
 
     def update(self, x):
+        # 应该是0吧
+        # print(f"x:{x}")
         batch_mean = torch.mean(x, dim=0)
+        # print(f"mean:{batch_mean}")
         batch_var = torch.var(x, dim=0)
         batch_count = x.shape[0]
         self.update_from_moments(batch_mean, batch_var, batch_count)
@@ -159,17 +143,12 @@ class MLPBase(nn.Module):
         super(MLPBase, self).__init__()
         self.gaussian_fixed_var=gaussian_fixed_var
         self.recurrent = False
-        # self._use_feature_normalization = args.use_feature_normalization
-        # self._use_orthogonal = args.use_orthogonal
-        # self._use_ReLU = args.use_ReLU
-        # self._stacked_frames = args.stacked_frames
         num_options=num_options
         dc=dc, 
         hid_size =  hid_size
         num_hid_layers= num_hid_layers
         self.num=int(num)
-        # self.last_action = torch.zeros(ac_space.shape)
-        # self.last_action_init = torch.zeros(ac_space.shape)
+
         self.ac_space = ac_space
 
         self.ac_space_dim = ac_space.shape[0]
@@ -177,24 +156,13 @@ class MLPBase(nn.Module):
         self.q_space_dim = q_space[0]
         self.pi_space_dim = pi_space[0]
         self.mu_space_dim = mu_space[0]
+        # print(self.ac_space_dim,self.q_space_dim,self.pi_space_dim,self.mu_space_dim)
         # print(f"self.mu:{self.mu_space_dim}")
-        self.pdtype = DiagonalGaussianPolicy(ac_space)
+        # self.pdtype = DiagonalGaussianPolicy(ac_space)
         # print(self.ac_space)
         # multi_walker 的特殊形式？
-
-
-        # self.ac_space_dim = ac_space_dim
-        # self.q_space_dim = q_space_dim
-        # self.pi_space_dim = pi_space_dim
-        # self.mu_space_dim = mu_space_dim
-        # self.pdtype = pdtype = make_pdtype(ac_space) # GaussianDiag
-        # q_space_dim = (17+(num-1)*(5+4),)
-        # pi_space_dim = (17+(num-1)*(5),)
-        # mu_space_dim = (6,)
-        # self.q_space_dim = (17+(num-1)*(5+4),)
-        # self.pi_space_dim = (17+(num-1)*(5),)
-        # self.mu_space_dim = (6,)
         self.num_options = num_options
+        # print(num_options)
         self.dc = dc
         # if self._use_feature_normalization:
         #     self.feature_norm = nn.LayerNorm(obs_shape[0])
@@ -220,24 +188,38 @@ class MLPBase(nn.Module):
         # self.ob_rms_q.update()
         # print(f"ob:{ob}")
         ob = prepare_observation(ob)
+        # print(f"ob.shape[0]:{ob.shape[0]}")
         if option is not None:
             option = torch.tensor(option, dtype=torch.long).unsqueeze(0)
         # print(f"option:{option}")
-        obz_q = torch.clamp((ob[:, 3:self.q_space_dim + 3] - torch.mean(ob[:, 3:self.q_space_dim + 3])) / torch.std(ob[:, 3:self.q_space_dim + 3]), -10.0, 10.0)
-        obz_pi = torch.clamp((ob[:, 3:self.pi_space_dim + 3] - torch.mean(ob[:, 3:self.pi_space_dim + 3])) / torch.std(ob[:, 3:self.pi_space_dim + 3]), -10.0, 10.0)
-        obz_mu = torch.clamp((ob[:, :self.mu_space_dim] - torch.mean(ob[:, :self.mu_space_dim])) / torch.std(ob[:, :self.mu_space_dim]), -10.0, 10.0)
-        # ob = torch.clamp((ob-self.ob.mean)/self.ob.std,-10.0,10.0)
-        # print(f"obtype:{type(self.ob)}")
-        # print(f"obtypemean:{type(self.ob.mean)}")
-        # print(f"obtypestd:{type(self.ob.std)}")
+        # print(f"(ob[:, 3:self.q_space_dim + 3]:{ob[:, 3:self.q_space_dim + 3].shape}")
+        # print(self.ob_rms_q.mean.shape)
+        
+
+        # print(f"torch.mean(ob[:, 3:self.q_space_dim + 3],dim=0):{torch.mean(ob[:, 3:self.q_space_dim + 3],dim=0)}")
+        # print(ob[:, 3:self.q_space_dim + 3] - torch.mean(ob[:, 3:self.q_space_dim + 3],dim=0))
+        if ob.shape[0]==1:
+            obz_q = torch.clamp((ob[:, 3:self.q_space_dim + 3]), -10.0, 10.0)
+            obz_pi = torch.clamp((ob[:, 3:self.pi_space_dim + 3]), -10.0, 10.0)
+            obz_mu = torch.clamp((ob[:, :self.mu_space_dim]), -10.0, 10.0)
+            # print("pass")
+        else:
+            self.ob_rms_q.update(ob[:, 3:self.q_space_dim + 3])
+            self.ob_rms_pi.update(ob[:, 3:self.pi_space_dim + 3])
+            self.ob_rms_mu.update(ob[:, self.mu_space_dim])
+            obz_q = torch.clamp((ob[:, 3:self.q_space_dim + 3] - self.ob_rms_q.mean) / self.ob_rms_q.std, -10.0, 10.0)
+            obz_pi = torch.clamp((ob[:, 3:self.pi_space_dim + 3] - self.ob_rms_pi.mean) / self.ob_rms_pi.std, -10.0, 10.0)
+            obz_mu = torch.clamp((ob[:, :self.mu_space_dim] - self.ob_rms_mu.mean) / self.ob_rms_mu.std, -10.0, 10.0)
+        
         #### q_network here
         # print(f"obz_q:{obz_q}")
         q_val0 = self.q_net0(obz_q)
         q_val1 = self.q_net1(obz_q)
-        vpred = q_val1
+        # vpred = q_val1
         if option is not None:
-            vpred = q_val1[:,0] if option[0] == 1 else q_val0[:,0]
-        self.vpred=vpred
+            # 如果option是none,预计self.vpred不会改变，保持上次的值
+            self.vpred = q_val1[:,0] if option[0] == 1 else q_val0[:,0]
+        # self.vpred=vpred
         #####
         ### Define the policy over options
         # print(f"obz_mu:{obz_mu}")
@@ -250,17 +232,22 @@ class MLPBase(nn.Module):
             option_val1 = option_val1.unsqueeze(1)
         # print(f"option_val01:{option_val0}")
 
-        option_vals = torch.cat([option_val0, option_val1], dim=1).detach()
+        option_vals = torch.cat([option_val0, option_val1], dim=1)
+        # print(option_vals)
         
-        op_pi = F.softmax(option_vals, dim=1)
+        op_pi = F.softmax(option_vals,dim=1)
+        # print(f"op_1:{op_pi}")
+        # op_pi2 = F.softmax(option_vals)
+        # print(f"op_2:{op_pi2}")
+
         self.op_pi = op_pi
         # print(f"option_vals:{option_vals.size(1)}")
         self.termhead = Dense3D2(option_vals.size(1), 1, num_options=self.num_options, weight_init=nn.init.orthogonal_)
         # print(option.shape)
         if option is not None:
-            tpred_logits = self.termhead(option_vals, option)
+            tpred_logits = self.termhead(option_vals.detach(), option)
             # print(f"tpred_logits:{tpred_logits}")
-            self.tpred = torch.sigmoid(tpred_logits).squeeze(-1)
+            self.tpred = torch.sigmoid(tpred_logits)[:,0]
             # print(self.tpred)
         # tpred检查完毕
         # print(f"tpred:{self.tpred}")
@@ -292,7 +279,7 @@ class MLPBase(nn.Module):
         logstd = self.pd.log_prob(ac)
 
 
-        return ac, vpred, mean, logstd, op_pi,self.tpred
+        return ac, self.vpred, mean, logstd, op_pi,self.tpred
     # 不懂第三个为什么要返回那个， 是个obs clamp感觉没有必要返回(之前有个obz_pi)
 
     def act(self, stochastic, ob, option):
@@ -323,16 +310,19 @@ class MLPBase(nn.Module):
     def get_option(self, ob):
         # print(f"op_pi:{self.forward(ob, option = None)[4][0]}")
         op_prob = self.forward(ob, option = None)[4].detach().cpu().numpy()[0]
+        # print(np.random.choice(len(op_prob), p=op_prob))
         return np.random.choice(len(op_prob), p=op_prob)
 
-    def get_term_adv(self, ob, curr_opt):
-        vals = [self.forward(ob, torch.tensor([opt]))[1].detach().cpu().numpy() for opt in range(self.num_options)]
-        op_prob = self.forward(ob, option = None)[3].detach().cpu().numpy()[0]
-        return (vals[curr_opt[0]] - np.sum(op_prob * vals) + self.dc), (vals[curr_opt[0]] - np.sum(op_prob * vals))
+    # def get_term_adv(self, ob, curr_opt):
+    #     vals = [self.forward(ob, torch.tensor([opt]))[1].detach().cpu().numpy() for opt in range(self.num_options)]
+    #     print(f"vals:{vals}")
+    #     op_prob = self.forward(ob, option = None)[4].detach().cpu().numpy()[0]
+    #     print(f"op_prob:{op_prob}")
+    #     return (vals[curr_opt[0]] - np.sum(op_prob * vals) + self.dc), (vals[curr_opt[0]] - np.sum(op_prob * vals))
 
     def get_opt_adv(self, ob, curr_opt):
         # print(f"ob:{ob}")
-
+        # print(curr_opt)
         vals = [self.forward(ob, torch.tensor([opt]))[1].detach().cpu().numpy() for opt in range(self.num_options)]
         # print(f"vals:{vals}")
         vals = np.stack(vals)
@@ -349,15 +339,9 @@ class MLPBase(nn.Module):
         vals_max = np.amax(vals,axis=0)
         return (vals[curr_opt[0]] - vals_max + self.dc), (vals[curr_opt[0]] - vals_max)
 
-    def get_variables(self):
-        return list(self.parameters())
+    
+    
 
-    def get_trainable_variables(self):
-        return list(filter(lambda p: p.requires_grad, self.parameters()))
+     
 
-    def get_initial_state(self):
-        return []  
-
-    def reset_last_act(self):
-        self.last_action = self.last_action_init.detach()
-        return self.last_action
+    

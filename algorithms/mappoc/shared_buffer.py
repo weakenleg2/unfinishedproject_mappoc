@@ -18,8 +18,8 @@ from torch.distributions import Normal, kl_divergence
 import torch
 import torch.nn.functional as F
 
-# import wandb
-# wandb.init(project="mappoc_multiwalker_fixed", entity="2017920898")
+import wandb
+wandb.init(project="mappoc_multiwalker_fixed", entity="2017920898")
 
 
 def flatten_lists(listoflists):
@@ -103,7 +103,7 @@ def are_networks_equal(net1, net2):
     print("true")
     return True
 
-def compute_losses( acs, atargs, rets, lrmults, ops, term_adv, pol_ov_op_ents, agents, oldagents, clip_param, entcoeff):
+def compute_losses(acs, atargs, rets, lrmults, ops, term_adv, pol_ov_op_ents, agents, oldagents, clip_param, entcoeff):
     # losses = []
     # print(f"acs:{acs.shape}")
     # for i in range(len(agents)):
@@ -260,6 +260,7 @@ def traj_segment_generator_torch(agents, env, horizon, num, comm_weight, explo_i
         acts_hist.append([acts[i] for _ in range(horizon)])
         opt_duration_hist.append([[] for _ in range(num_options)])
         logstds_hist.append([[] for _ in range(num_options)])
+    print("...Done")        
     print('Performing initial step...')
     # perform initial action
     action = [1, 1, 1, 1]
@@ -313,6 +314,10 @@ def traj_segment_generator_torch(agents, env, horizon, num, comm_weight, explo_i
             # agent靠传递
             # print(f"obs{i}:{len(obs[i])}")
             acts[i], vpreds[i], _, logstds[i] = agents[i].act(stochastic, obs[i], options[i])
+            # print(f"acts1:{logstds[i]}")
+            # acts[i], vpreds[i], _, logstds[i] = agents[i].act(stochastic, obs[i], options[i])
+            # print(f"acts2:{logstds[i]}")
+
             #  = np.random.uniform(-1, 1, 4)
 
             # 网络的东西了
@@ -405,6 +410,7 @@ def traj_segment_generator_torch(agents, env, horizon, num, comm_weight, explo_i
         # Calculate option
         for i in range(num):
             options[i] = agents[i].get_option(copy.copy(obs[i])) 
+            
             # Might be unnecessary since no manipulation happens
             opt_duration_hist[i][options[i]].append(curr_opt_duration[i])
             curr_opt_duration[i] = 0.
@@ -559,28 +565,28 @@ def learn(env, policy_func, *,
     term_adv = [] ## NO NAME CHANGE
     acs = []
     rews = []
-    kloldnew = [] ## NO NAME CHANGE
-    ents = []
-    meankl = [] ## NO NAME CHANGE
-    meanents = []
-    pol_entpen = [] ## NO NAME CHANGE
-    ratios = []
-    atarg_clips = []
-    surr1 = []
-    surr2 = []
-    pol_surr = []
-    vf_losses = []
-    total_losses = []
+    # kloldnew = [] ## NO NAME CHANGE
+    # ents = []
+    # meankl = [] ## NO NAME CHANGE
+    # meanents = []
+    # pol_entpen = [] ## NO NAME CHANGE
+    # ratios = []
+    # atarg_clips = []
+    # surr1 = []
+    # surr2 = []
+    # pol_surr = []
+    # vf_losses = []
+    # total_losses = []
     losses = []
-    log_pi = [] ## NO NAME CHANGE
-    old_log_pi = []
-    entropies = [] ## NOT ENTS
-    ratio_pol_ov_op = [] ## NO NAME CHANGE
-    term_adv_clip = []
-    surr1_pol_ov_op = [] ## NO NAME CHANGE
-    surr2_pol_ov_op = [] ## NO NAME CHANGE
-    pol_surr_pol_ov_op = [] ## NO NAME CHANGE
-    op_loss = []
+    # log_pi = [] ## NO NAME CHANGE
+    # old_log_pi = []
+    # entropies = [] ## NOT ENTS
+    # ratio_pol_ov_op = [] ## NO NAME CHANGE
+    # term_adv_clip = []
+    # surr1_pol_ov_op = [] ## NO NAME CHANGE
+    # surr2_pol_ov_op = [] ## NO NAME CHANGE
+    # pol_surr_pol_ov_op = [] ## NO NAME CHANGE
+    # op_loss = []
     for i in range(num):
         agents.append(policy_func(q_space_shape, ac_space, pi_space_shape, mu_space_shape, num)) # Construct network for new policy
         # oldagents.append(policy_func( q_space_shape, ac_space, pi_space_shape, mu_space_shape, num)) # Network for old policy
@@ -589,6 +595,7 @@ def learn(env, policy_func, *,
         acs.append([])
         atargs.append([])
         rews.append([])
+    # print(f"agents:{agents}")
     # for i in range(num):
     #     for old_param, current_param in zip(oldagents[i].parameters(), agents[i].parameters()):
     #         # if old_param.data.shape != current_param.data.shape:
@@ -598,10 +605,10 @@ def learn(env, policy_func, *,
    
     
     var_lists = []
-    term_lists = []
-    lossandgrads = []
-    adams = []
-    assign_old_eq_new = []
+    # term_lists = []
+    # lossandgrads = []
+    # adams = []
+    # assign_old_eq_new = []
     # compute_losses = []
     
     optimizers = []
@@ -731,7 +738,6 @@ def learn(env, policy_func, *,
         
         
 
-            # print('...Done')
 
         ### Starting the training iteration
         logger.log("*********** Iteration %i *************" % iters_so_far)
@@ -793,14 +799,9 @@ def learn(env, policy_func, *,
             atargs[i] = (atargs[i] - atargs[i].mean()) / atargs[i].std() # standardized advantage function estimate
             if hasattr(agents[i], "ob_rms"): agents[i].ob_rms.update(obs[i]) # update running mean/std for policy
             if hasattr(agents[i], "ob_rms_only"): agents[i].ob_rms_only.update(obs[i])
-            # for i in range(num):
-            #     for old_param, current_param in zip(oldagents[i].parameters(), agents[i].parameters()):
-            #         # if old_param.data.shape != current_param.data.shape:
-            #         print(f"Mismatch! Old param shape: {old_param.data.shape}, current param shape: {current_param.data.shape}")
-            # update_old_policy(oldagents[i], agents[i])
-            # assign_old_eq_new[i]() # set old parameter values to new parameter values
-            # for update in assign_old_eq_new:
-            #     update()
+            oldagents[i].load_state_dict(agents[i].state_dict())
+
+            
             # minimum batch size:
             min_batch=160
             t_advs = [[] for _ in range(num_options)]
@@ -815,7 +816,7 @@ def learn(env, policy_func, *,
                 # This part is only necessary when we use options. We proceed to these verifications in order not to discard any collected trajectories.
                 if datas[i][opt] != 0:
                     if (indices.size < min_batch and datas[i][opt].n > min_batch):
-                        datas[i][opt] = Dataset(dict(ob=obs[i][indices], ac=acs[i][indices], atarg=atargs[i][indices],op=ops[i][indices]
+                        datas[i][opt] = Dataset(dict(ob=obs[i][indices], ac=acs[i][indices], atarg=atargs[i][indices]
                                                      ,rews = rews[i][indices],
                                                      vtarg=tdlamret[indices]), shuffle=not agents[i].recurrent)
                         t_advs[opt].append(0.)
@@ -870,20 +871,14 @@ def learn(env, policy_func, *,
                         tadv,nodc_adv = agents[i].get_opt_adv(batch["ob"],opt)
                         tadv = tadv if num_options > 1 else np.zeros_like(tadv)
                         t_advs[opt].append(nodc_adv)
-                        # # calculate the gradient
-                        # *newlosses, grads = lossandgrads[i](batch["ob"], batch["ac"], batch["atarg"], batch["vtarg"],
-                        #                                     cur_lrmult, [opt], tadv,des_pol_op_ent)
-                        # # perform gradient update
-                        # if wsaves:
-                        #     adams[i].update(grads, optim_stepsize * cur_lrmult)
-                        # losses.append(newlosses)
-                        for optimizer in optimizers:
-                            optimizer.zero_grad()
+                        
+                        
+                        optimizers[i].zero_grad()
 
     
                         # Extracting data from the batch
-                        observations = batch["ob"]
-                        observations = torch.FloatTensor(observations).to(device)
+                        # observations = batch["ob"]
+                        # observations = torch.FloatTensor(observations).to(device)
                         actions = batch["ac"]
                         advantages = batch["atarg"]
                         rets = batch["rews"]
@@ -908,8 +903,8 @@ def learn(env, policy_func, *,
                         loss.backward()
                         
                         # Perform a single optimization step (parameter update)
-                        for optimizer in optimizers:
-                            optimizer.zero_grad()
+                        # for optimizer in optimizers:
+                        optimizers[i].step()
                         # print("#################")
                         # print("done")
                         # print(loss_append)
@@ -917,7 +912,6 @@ def learn(env, policy_func, *,
 
                     # for i in range(num):
                     # are_networks_equal(agents[i],oldagents[i])
-                    oldagents[i].load_state_dict(agents[i].state_dict())
                     # are_networks_equal(agents[i],oldagents[i])
 
                     # 检查parameter等不等
@@ -979,7 +973,7 @@ def learn(env, policy_func, *,
             sumrew += np.mean(rewbuffer[i])
         allrew = sumrew/num
         realrealrew = np.mean(realrew)
-        # wandb.log({"rews": realrealrew})
+        wandb.log({"rews": realrealrew})
 
 
         avg_comm_save = 0
@@ -990,7 +984,7 @@ def learn(env, policy_func, *,
         for i in range(num):
             avg_group_comm_save += np.mean(savbuffer[i])
         avg_group_comm_save = avg_group_comm_save/num
-        # wandb.log({"comm_savings": avg_group_comm_save})
+        wandb.log({"comm_savings": avg_group_comm_save})
 
         
 
