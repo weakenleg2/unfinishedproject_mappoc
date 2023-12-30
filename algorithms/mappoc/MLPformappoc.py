@@ -188,7 +188,7 @@ class MLPBase(nn.Module):
         # self.ob_rms_q.update()
         # print(f"ob:{ob}")
         ob = prepare_observation(ob)
-        # print(f"ob.shape[0]:{ob.shape[0]}")
+        print(f"ob.shape[0]:{ob.shape}")
         if option is not None:
             option = torch.tensor(option, dtype=torch.long).unsqueeze(0)
         # print(f"option:{option}")
@@ -313,12 +313,7 @@ class MLPBase(nn.Module):
         # print(np.random.choice(len(op_prob), p=op_prob))
         return np.random.choice(len(op_prob), p=op_prob)
 
-    # def get_term_adv(self, ob, curr_opt):
-    #     vals = [self.forward(ob, torch.tensor([opt]))[1].detach().cpu().numpy() for opt in range(self.num_options)]
-    #     print(f"vals:{vals}")
-    #     op_prob = self.forward(ob, option = None)[4].detach().cpu().numpy()[0]
-    #     print(f"op_prob:{op_prob}")
-    #     return (vals[curr_opt[0]] - np.sum(op_prob * vals) + self.dc), (vals[curr_opt[0]] - np.sum(op_prob * vals))
+    
 
     def get_opt_adv(self, ob, curr_opt):
         # print(f"ob:{ob}")
@@ -331,14 +326,7 @@ class MLPBase(nn.Module):
         # print(curr_opt)
         return (vals[curr_opt] - vals_max + self.dc), (vals[curr_opt] - vals_max)
 
-    def get_opt_adv_oldpi(self, ob, curr_opt):
-        # Same as get_opt_adv, not sure what you want to do with oldpi here. Adjust accordingly.
-        vals = [self.forward(ob, torch.tensor([opt]))[1].detach().cpu().numpy() for opt in range(self.num_options)]
-        vals = np.stack(vals)
-        # print(f"vals:{vals}")
-        vals_max = np.amax(vals,axis=0)
-        return (vals[curr_opt[0]] - vals_max + self.dc), (vals[curr_opt[0]] - vals_max)
-
+   
     
     
 

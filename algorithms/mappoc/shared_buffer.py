@@ -18,8 +18,8 @@ from torch.distributions import Normal, kl_divergence
 import torch
 import torch.nn.functional as F
 
-import wandb
-wandb.init(project="mappoc_multiwalker_fixed", entity="2017920898")
+# import wandb
+# wandb.init(project="mappoc_multiwalker_fixed", entity="2017920898")
 
 
 def flatten_lists(listoflists):
@@ -973,7 +973,7 @@ def learn(env, policy_func, *,
             sumrew += np.mean(rewbuffer[i])
         allrew = sumrew/num
         realrealrew = np.mean(realrew)
-        wandb.log({"rews": realrealrew})
+        # wandb.log({"rews": realrealrew})
 
 
         avg_comm_save = 0
@@ -984,7 +984,7 @@ def learn(env, policy_func, *,
         for i in range(num):
             avg_group_comm_save += np.mean(savbuffer[i])
         avg_group_comm_save = avg_group_comm_save/num
-        wandb.log({"comm_savings": avg_group_comm_save})
+        # wandb.log({"comm_savings": avg_group_comm_save})
 
         
 
